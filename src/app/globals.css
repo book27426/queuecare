@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@theme {
+  --color-health-green: #10B981;
+  --color-health-green-depth: #065f46; /* The side of the green button */
+  --color-staff-blue: #0096FF;
+  --color-staff-blue-depth: #0070c1;
+  --color-shadow-block: rgba(0, 0, 0, 0.15); /* The hard 45° shadow */
+}
+
+body {
+  @apply bg-white text-slate-900 antialiased overflow-x-hidden;
+}
