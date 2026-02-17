@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
-
-export async function GET(_, { params }) {
-  const queueListId = Number(params.nxtPqueue_list_id);
+export async function GET(req, context) {
+  const { queue_list_id } = await context.params;
   const section_id = 10
   const section_name = "General Service";
 
@@ -14,7 +12,7 @@ export async function GET(_, { params }) {
   const estimatedWaitTime = currentWaiting * avgOperationTime;
 
   const mockData = {
-    queue_list_id: queueListId,
+    queue_list_id: queue_list_id,
     section_id: section_id,
     section_name: section_name,
     current_waiting_queue: currentWaiting,

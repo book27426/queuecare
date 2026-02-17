@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 
-export async function GET(req, { params }) {
-  const sectionId = Number(params.section_id);
+export async function GET(req, context) {
+  const { section_id } = await context.params;
   const section_name = "General Service";
 
   const { searchParams } = new URL(req.url);
   const period = searchParams.get("period") || "today";
 
   const mockData = {
-    section_id: sectionId,
+    section_id: section_id,
     section_name :section_name,
     period,
     est_new_queue_per_hour: 28,
