@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(_, { params }) {
   const queueListId = Number(params.queue_list_id);
   const section_id = 10
