@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(req, { params }) {
   const sectionId = Number(params.section_id);
+  console.log(queueListId);
   const section_name = "General Service";
 
   const { searchParams } = new URL(req.url);
