@@ -12,7 +12,7 @@ export async function GET(_, { params }) {
   const estimatedWaitTime = currentWaiting * avgOperationTime;
 
   const mockData = {
-    queue_list_id: queueListId,
+    queue_list_id: params,
     section_id: section_id,
     section_name: section_name,
     current_waiting_queue: currentWaiting,
@@ -26,5 +26,5 @@ export async function GET(_, { params }) {
     last_updated: new Date().toISOString(),
   };
 
-  return NextResponse.json(params);
+  return NextResponse.json(mockData);
 }
