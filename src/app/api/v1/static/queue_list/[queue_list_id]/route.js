@@ -26,5 +26,5 @@ export async function GET(_, { params }) {
     last_updated: new Date().toISOString(),
   };
 
-  return NextResponse.json(mockData);
+  return NextResponse.json(queueListId);
 }
