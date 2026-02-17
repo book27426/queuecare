@@ -3,27 +3,21 @@ import { db } from "@/lib/db";
 
 export async function POST(req) {
   try {
-    const { name, wait_default, section_id } = await req.json();
+    const { role, first_name, last_name, token, section_id } = await req.json();
 
-    if (!name || !section_id) {
-      return NextResponse.json(
-        { message: "name and section_id required" },
-        { status: 400 }
-      );
+    if (!role || !token) {
+      return NextResponse.json({ message: "role and token required" }, { status: 400 });
     }
 
     const { rows } = await db.query(
-      `INSERT INTO queue_list (name, wait_default, section_id)
-       VALUES ($1,$2,$3)
+      `INSERT INTO staff (role, first_name, last_name, token, section_id)
+       VALUES ($1,$2,$3,$4,$5)
        RETURNING *`,
-      [name, wait_default || 0, section_id]
+      [role, first_name, last_name, token, section_id]
     );
 
     return NextResponse.json(rows[0], { status: 201 });
   } catch (err) {
-    return NextResponse.json(
-      { message: "Failed to create queue list" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "error creating staff" }, { status: 500 });
   }
 }

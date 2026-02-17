@@ -1,6 +1,3 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-
 export async function PUT(_, { params }) {
   await db.query(
     `UPDATE queue
