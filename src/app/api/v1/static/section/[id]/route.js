@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export async function GET(req, { params }) {
-  const sectionId = Number(params.section_id);
+  const sectionId = Number(params.id);
   console.log(queueListId);
   const section_name = "General Service";
 
