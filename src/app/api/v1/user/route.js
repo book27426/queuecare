@@ -14,10 +14,18 @@ export async function POST(req) {
       );
     }
 
-    await db.query(
+    const result = await db.query(
       `INSERT INTO user (name, cookie_token, phone_num)
        VALUES ($1, $2, $3)`,
       [name, cookie_token, phone_num]
+    );
+
+    const user_id = result.rows[0].id;
+    
+    await db.query(
+      `INSERT INTO log (user_id, action_type, target)
+       VALUES ($1, $2, $3, $4)`,
+      [user_id, "create", "user"]
     );
 
     return NextResponse.json(queue, { status: 201 });

@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 export async function GET(_, { params }) {
   const queueListId = Number(params.queue_list_id);
   const section_id = 10
-  const section_name = idk
+  const section_name = "General Service";
+
   // Mock assumptions
   const currentWaiting = 8;
   const avgOperationTime = 7; // minutes
