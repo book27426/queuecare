@@ -11,11 +11,17 @@ export async function GET(_, { params }) {
 }
 
 export async function PUT(req, { params }) {
-  const { name, phone_num } = await req.json();
-
+  const { name, phone_num, staff_id } = await req.json();
   await db.query(
     `UPDATE users SET name=$1, phone_num=$2 WHERE id=$3`,
     [name, phone_num, params.id]
+  );
+
+  const detail = "user_id = "+params.id+" change ..."///addmore
+  await db.query(
+    `INSERT INTO log (staff_id, action_type, action, target)
+    VALUES ($1, $2, $3, $4)`,
+    [staff_id, "update", detail, "user"]
   );
 
   return NextResponse.json({ message: "updated" });
@@ -25,6 +31,13 @@ export async function DELETE(_, { params }) {
   await db.query(
     `UPDATE users SET is_deleted=true WHERE id=$1`,
     [params.id]
+  );
+
+  const detail = "user_id = " + params.id
+  await db.query(
+    `INSERT INTO log (staff_id, action_type, action, target)
+    VALUES ($1, $2, $3, $4)`,
+    [staff_id, "delete", detail, "user"]
   );
 
   return NextResponse.json({ message: "deleted" });

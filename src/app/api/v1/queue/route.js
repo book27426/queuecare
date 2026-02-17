@@ -11,6 +11,12 @@ export async function POST(req) {
     [number, user_id, queue_list_id]
   );
 
+  await db.query(
+    `INSERT INTO log (user_id, action_type,target)
+      VALUES ($1, $2, $3)`,
+    [user_id, "create", "queue"]
+  );
+
   return NextResponse.json(rows[0], { status: 201 });
 }
 

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 export async function PUT(req, { params }) {
   try {
     const { id } = params;
-    const { first_name, last_name, role, section_id } = await req.json();
+    const { first_name, last_name, role, section_id, staff_id } = await req.json();
 
     const { rowCount } = await db.query(
       `UPDATE staff
@@ -12,6 +12,14 @@ export async function PUT(req, { params }) {
        WHERE id=$5 AND is_deleted=false`,
       [first_name, last_name, role, section_id, id]
     );
+
+    const detail = "staff_id = " + id +" change ..."///add more
+    await db.query(
+      `INSERT INTO log (staff_id, action_type, action, target)
+      VALUES ($1, $2, $3, $4)`,
+      [staff_id, "update", detail, "staff"]
+    );
+
 
     if (!rowCount)
       return NextResponse.json({ message: "Not found" }, { status: 404 });
@@ -27,6 +35,13 @@ export async function DELETE(_, { params }) {
     await db.query(
       `UPDATE staff SET is_deleted=true WHERE id=$1`,
       [params.id]
+    );
+
+    const detail = "staff_id = " + params.id
+    await db.query(
+      `INSERT INTO log (staff_id, action_type, action, target)
+      VALUES ($1, $2, $3, $4)`,
+      [staff_id, "delete", detail, "staff"]
     );
 
     return NextResponse.json({ message: "deleted" });

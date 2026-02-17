@@ -19,6 +19,12 @@ export async function POST(req) {
       [name, parent_id || null, depth_int || 0]
     );
 
+    await db.query(
+      `INSERT INTO log (staff_id, action_type,target)
+       VALUES ($1, $2, $3)`,
+      [staff_id, "create", "section"]
+    );
+
     return NextResponse.json(rows[0], { status: 201 });
   } catch (err) {
     return NextResponse.json(

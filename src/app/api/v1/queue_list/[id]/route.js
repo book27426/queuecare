@@ -4,13 +4,20 @@ import { db } from "@/lib/db";
 export async function PUT(req, { params }) {
   try {
     const { id } = params;
-    const { first_name, last_name, role, section_id } = await req.json();
+    const { first_name, last_name, role, section_id, staff_id } = await req.json();
 
     const { rowCount } = await db.query(
       `UPDATE staff
        SET first_name=$1, last_name=$2, role=$3, section_id=$4
        WHERE id=$5 AND is_deleted=false`,
       [first_name, last_name, role, section_id, id]
+    );
+
+    const detail = "queueu_list_id = " + id +" change ..."///add more
+    await db.query(
+      `INSERT INTO log (staff_id, action_type, action, target)
+      VALUES ($1, $2, $3, $4)`,
+      [staff_id, "update", detail, "staff"]
     );
 
     if (!rowCount)
