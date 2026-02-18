@@ -32,8 +32,9 @@ export async function PUT(req, context) {
   return NextResponse.json({ message: "updated" });
 }
 
-export async function DELETE(_, context) {
+export async function DELETE(req, context) {
   const { id } = await context.params;
+  const { staff_id } = await req.json();
   await db.query(
     `UPDATE users SET is_deleted=true WHERE id=$1`,
     [id]
