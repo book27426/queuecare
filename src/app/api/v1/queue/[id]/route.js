@@ -1,3 +1,6 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
 export async function GET(_, context) {
   const { id } = await context.params;
   const { rows } = await db.query(
