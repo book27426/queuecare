@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-export async function GET(_, { params }) {
+export async function GET(_, context) {
+  const { id } = await context.params;
   const { rows } = await db.query(
     `SELECT * FROM section
      WHERE id=$1 AND is_deleted=false`,
-    [params.id]
+    [id]
   );
 
   if (!rows.length)
@@ -14,18 +15,19 @@ export async function GET(_, { params }) {
   return NextResponse.json(rows[0]);
 }
 
-export async function PUT(req, { params }) {
+export async function PUT(req, context) {
   try {
+    const { id } = await context.params;
     const { name, parent_id, depth_int, staff_id } = await req.json();
 
     const { rowCount } = await db.query(
       `UPDATE section
        SET name=$1, parent_id=$2, depth_int=$3
        WHERE id=$4 AND is_deleted=false`,
-      [name, parent_id || null, depth_int || 0, params.id]
+      [name, parent_id || null, depth_int || 0, id]
     );
 
-    const detail = "section_id = " + params.id + " change ..."////addmore
+    const detail = "section_id = " + id + " change ..."////addmore
 
     await db.query(
       `INSERT INTO log (staff_id, action_type,target)
@@ -42,13 +44,14 @@ export async function PUT(req, { params }) {
   }
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req, context) {
   try {
+    const { id } = await context.params;
     const { staff_id } = await req.json();
 
     await db.query(
       `UPDATE section SET is_deleted=true WHERE id=$1`,
-      [params.id]
+      [id]
     );
 
     await db.query(

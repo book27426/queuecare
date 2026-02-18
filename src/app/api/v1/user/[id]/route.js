@@ -14,14 +14,15 @@ export async function GET(_, context) {
   return NextResponse.json(rows[0]);
 }
 
-export async function PUT(req, { params }) {
+export async function PUT(req, context) {
+  const { id } = await context.params;
   const { name, phone_num, staff_id } = await req.json();//change for cookie from user
   await db.query(
     `UPDATE users SET name=$1, phone_num=$2 WHERE id=$3`,
-    [name, phone_num, params.id]
+    [name, phone_num, id]
   );
 
-  const detail = "user_id = "+params.id+" change ..."//addmore need 
+  const detail = "user_id = "+id+" change ..."//addmore need 
   await db.query(
     `INSERT INTO log (staff_id, action_type, action, target)
     VALUES ($1, $2, $3, $4)`,
@@ -31,13 +32,14 @@ export async function PUT(req, { params }) {
   return NextResponse.json({ message: "updated" });
 }
 
-export async function DELETE(_, { params }) {
+export async function DELETE(_, context) {
+  const { id } = await context.params;
   await db.query(
     `UPDATE users SET is_deleted=true WHERE id=$1`,
-    [params.id]
+    [id]
   );
 
-  const detail = "user_id = " + params.id
+  const detail = "user_id = " + id
   await db.query(
     `INSERT INTO log (staff_id, action_type, action, target)
     VALUES ($1, $2, $3, $4)`,

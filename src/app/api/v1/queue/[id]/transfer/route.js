@@ -1,20 +1,21 @@
-export async function PUT(req, { params }) {
-  const { staff_id } = await req.json();
+export async function PUT(req, context) {
+  const { id } = await context.params;
+  const { staff_id,queue_list_id,queue_detail, } = await req.json();
 
   await db.query(
     `UPDATE queue
-     SET status='sented'
+     SET status='sented',detail=$2,staff_id=$3
      WHERE id=$1`,
-    [params.id]
+    [id,queue_detail,staff_id]
   );
 
   await db.query(
-    `INSERT INTO queue (number,user_id,queue_list_id)
-     SELECT number,user_id,$2 FROM queue WHERE id=$1`,
-    [params.id, params.queue_list_id]
+    `INSERT INTO queue (number,detail,queue_date,user_id,queue_list_id)
+     SELECT number,detail,queue_date,user_id,$2 FROM queue WHERE id=$1`,
+    [id, queue_list_id,]
   );
 
-  const detail = "update queue = " + params.id + " update to transfer "+" create new queue at "+params.queue_list_id
+  const detail = "update queue = " + id + " update to transfer "+" create new queue at "+queue_list_id
   await db.query(
     `INSERT INTO log (staff_id, action_type, action, target)
     VALUES ($1, $2, $3, $4)`,

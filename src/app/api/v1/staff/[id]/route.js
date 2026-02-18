@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-export async function PUT(req, { params }) {
+export async function PUT(req, context) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
     const { first_name, last_name, role, section_id, staff_id, email } = await req.json();
 
     const { rowCount } = await db.query(
@@ -30,14 +30,15 @@ export async function PUT(req, { params }) {
   }
 }
 
-export async function DELETE(_, { params }) {
+export async function DELETE(_, context) {
   try {
+    const { id } = await context.params;
     await db.query(
       `UPDATE staff SET is_deleted=true WHERE id=$1`,
-      [params.id]
+      [id]
     );
 
-    const detail = "staff_id = " + params.id
+    const detail = "staff_id = " + id
     await db.query(
       `INSERT INTO log (staff_id, action_type, action, target)
       VALUES ($1, $2, $3, $4)`,

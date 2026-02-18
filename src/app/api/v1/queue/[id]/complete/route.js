@@ -1,14 +1,15 @@
-export async function PUT(req, { params }) {
+export async function PUT(req, context) {
+  const { id } = await context.params;
   const { staff_id } = await req.json();
   
   await db.query(
     `UPDATE queue
      SET status='completed', end_at=NOW()
      WHERE id=$1 AND status='serving'`,
-    [params.id]
+    [id]
   );
 
-  const detail = "update queue = " + params.id + " update to complete"
+  const detail = "update queue = " + id + " update to complete"
   await db.query(
     `INSERT INTO log (staff_id, action_type, action, target)
     VALUES ($1, $2, $3, $4)`,
