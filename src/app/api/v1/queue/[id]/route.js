@@ -5,7 +5,7 @@ export async function GET(_, context) {
   const { id } = await context.params;
   const { rows } = await db.query(
     `SELECT * FROM queue
-     WHERE id=$1 AND is_deleted=false`,
+     WHERE id=$1`,
     [id]
   );
 
