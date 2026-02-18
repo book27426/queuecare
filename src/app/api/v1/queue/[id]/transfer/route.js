@@ -17,8 +17,7 @@ export async function PUT(req, context) {
      SELECT number,detail,queue_date,user_id,$2 FROM queue WHERE id=$1`,
     [id, queue_list_id,]
   );
-
-  const detail = "update queue = " + id + " update to transfer "+" create new queue at "+queue_list_id
+  const detail = `update queue = ${id} to transfer create new queue at ${queue_list_id}`;
   await db.query(
     `INSERT INTO log (staff_id, action_type, action, target)
     VALUES ($1, $2, $3, $4)`,
