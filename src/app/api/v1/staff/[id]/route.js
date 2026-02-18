@@ -44,9 +44,10 @@ export async function PUT(req, context) {
   }
 }
 
-export async function DELETE(_, context) {
+export async function DELETE(req, context) {
   try {
     const { id } = await context.params;
+    const { staff_id } = await req.json();
     await db.query(
       `UPDATE staff SET is_deleted=true WHERE id=$1`,
       [id]
