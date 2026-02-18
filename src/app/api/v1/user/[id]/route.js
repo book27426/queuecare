@@ -16,10 +16,10 @@ export async function GET(_, context) {
 
 export async function PUT(req, context) {
   const { id } = await context.params;
-  const { name, phone_num, staff_id } = await req.json();
+  const { name, staff_id } = await req.json();
   await db.query(
-    `UPDATE users SET name=$1, phone_num=$2 WHERE id=$3`,
-    [name, phone_num, id]
+    `UPDATE users SET name=$1 WHERE id=$3`,
+    [name, id]
   );
 
   const detail = "user_id = "+id+" change ..."//addmore need 
