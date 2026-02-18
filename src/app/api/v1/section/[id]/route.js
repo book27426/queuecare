@@ -54,7 +54,7 @@ export async function DELETE(req, context) {
       [id]
     );
 
-    const detail = "section = " + id
+    const detail = "section_id = " + id
     await db.query(
       `INSERT INTO log (staff_id, action_type, action, target)
        VALUES ($1, $2, $3, $4)`,

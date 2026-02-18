@@ -18,12 +18,4 @@ export async function POST(req) {
   );
 
   return NextResponse.json(rows[0], { status: 201 });
-}
-
-export async function GET() {
-  const { rows } = await db.query(
-    `SELECT * FROM queue WHERE queue_date=CURRENT_DATE`
-  );
-
-  return NextResponse.json(rows);
-}
+};
