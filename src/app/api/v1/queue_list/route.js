@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
 export async function POST(req) {
-  try {
+
     const { wait_default, name, section_id, staff_id } = await req.json();
 
     if (!wait_default || !name || !section_id) {
@@ -23,7 +23,5 @@ export async function POST(req) {
     );
     
     return NextResponse.json(rows[0], { status: 201 });
-  } catch (err) {
-    return NextResponse.json({ message: "error creating staff" }, { status: 500 });
-  }
+
 }

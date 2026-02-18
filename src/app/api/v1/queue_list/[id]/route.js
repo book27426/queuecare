@@ -18,6 +18,7 @@ export async function GET(_, context) {
 export async function PUT(req, context) {
   try {
     const { id } = await context.params;
+
     const { wait_default, name, section_id, staff_id } = await req.json();
 
     const { rowCount } = await db.query(
