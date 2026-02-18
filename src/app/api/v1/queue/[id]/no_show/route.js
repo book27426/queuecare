@@ -11,14 +11,14 @@ export async function PUT(req, context) {
      WHERE id=$1 AND status='serving'`,
     [id]
   );
-  
+
   if (!rowCount) {
     return NextResponse.json(
       { message: "Queue is not serving or not found" },
       { status: 400 }
     );
   }else{
-    const detail = "update queue = " + id + " update to no show"
+    const detail = `update queue = ${id} to no show`;
     db.query(
       `INSERT INTO log (staff_id, action_type, action, target)
       VALUES ($1, $2, $3, $4)`,

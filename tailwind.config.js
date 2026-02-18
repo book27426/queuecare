@@ -1,15 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/**/*.{js,ts,jsx,tsx,mdx}", 
-  ],
   theme: {
     extend: {
       colors: {
-        healthGreen: '#10B981',
-        staffBlue: '#0096FF',
+        'health-green': '#10B981', // ตัวอย่างสี
+        'health-green-depth': '#059669', 
+        'staff-blue': '#3b82f6',
       },
     },
   },

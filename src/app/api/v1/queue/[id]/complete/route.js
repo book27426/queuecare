@@ -18,8 +18,7 @@ export async function PUT(req, context) {
       { status: 400 }
     );
   }else{
-    const detail = "update queue = " + id + " update to complete"
-
+    const detail = `update queue = ${id} to complete`;
     await db.query(
       `INSERT INTO log (staff_id, action_type, action, target)
       VALUES ($1, $2, $3, $4)`,

@@ -1,6 +1,10 @@
-import { MantineProvider, ColorSchemeScript } from '@mantine/core';
 import "@mantine/core/styles.css";
 import "./globals.css";
+import { ColorSchemeScript, MantineProvider } from "@mantine/core";
+
+export const metadata = {
+  title: "QueueCare",
+};
 
 export default function RootLayout({ children }) {
   return (
@@ -9,9 +13,7 @@ export default function RootLayout({ children }) {
         <ColorSchemeScript />
       </head>
       <body>
-        <MantineProvider>
-          {children} {/* This renders the specific pages with their own navbars */}
-        </MantineProvider>
+        <MantineProvider>{children}</MantineProvider>
       </body>
     </html>
   );
