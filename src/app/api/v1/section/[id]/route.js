@@ -54,10 +54,11 @@ export async function DELETE(req, context) {
       [id]
     );
 
+    const detail = "section = " + id
     await db.query(
-      `INSERT INTO log (staff_id, action_type,target)
-       VALUES ($1, $2, $3)`,
-      [staff_id, "delete", "section"]
+      `INSERT INTO log (staff_id, action_type, action, target)
+       VALUES ($1, $2, $3, $4)`,
+      [staff_id, "delete", detail, "section"]
     );
 
     return NextResponse.json({ message: "Soft deleted" });
