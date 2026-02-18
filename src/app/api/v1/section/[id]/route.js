@@ -30,8 +30,8 @@ export async function PUT(req, context) {
     const detail = "section_id = " + id + " change ..."////addmore
 
     await db.query(
-      `INSERT INTO log (staff_id, action_type,target)
-       VALUES ($1, $2, $3)`,
+      `INSERT INTO log (staff_id, action_type, action,target)
+       VALUES ($1, $2, $3, $4)`,
       [staff_id, "update", detail, "section"]
     );
 
