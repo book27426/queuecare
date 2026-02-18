@@ -1,3 +1,6 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
 export async function PUT(req, context) {
   const { id } = await context.params;
   const { staff_id } = await req.json();
