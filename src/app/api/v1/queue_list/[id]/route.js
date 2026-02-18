@@ -51,6 +51,12 @@ export async function DELETE(req, context) {
       `UPDATE staff SET is_deleted=true WHERE id=$1`,
       [id]
     );
+    const detail = "queue_list = " + id
+    await db.query(
+      `INSERT INTO log (staff_id, action_type, action, target)
+      VALUES ($1, $2, $3, $4)`,
+      [staff_id, "delete", detail, "queue_list"]
+    );
 
     return NextResponse.json({ message: "deleted" });
   } catch {
