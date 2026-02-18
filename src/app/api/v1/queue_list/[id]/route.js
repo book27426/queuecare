@@ -32,7 +32,7 @@ export async function PUT(req, context) {
     await db.query(
       `INSERT INTO log (staff_id, action_type, action, target)
       VALUES ($1, $2, $3, $4)`,
-      [staff_id, "update", detail, "staff"]
+      [staff_id, "update", detail, "queue_list"]
     );
 
     if (!rowCount)
@@ -49,7 +49,7 @@ export async function DELETE(req, context) {
     const { id } = await context.params;
     const { staff_id } = await req.json();
     await db.query(
-      `UPDATE staff SET is_deleted=true WHERE id=$1`,
+      `UPDATE queue_list SET is_deleted=true WHERE id=$1`,
       [id]
     );
     const detail = "queue_list = " + id
