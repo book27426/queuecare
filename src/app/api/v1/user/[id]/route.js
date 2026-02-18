@@ -11,13 +11,13 @@ export async function GET(_, { params }) {
 }
 
 export async function PUT(req, { params }) {
-  const { name, phone_num, staff_id } = await req.json();
+  const { name, phone_num, staff_id } = await req.json();//change for cookie from user
   await db.query(
     `UPDATE users SET name=$1, phone_num=$2 WHERE id=$3`,
     [name, phone_num, params.id]
   );
 
-  const detail = "user_id = "+params.id+" change ..."///addmore
+  const detail = "user_id = "+params.id+" change ..."//addmore need 
   await db.query(
     `INSERT INTO log (staff_id, action_type, action, target)
     VALUES ($1, $2, $3, $4)`,

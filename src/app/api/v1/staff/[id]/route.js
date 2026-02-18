@@ -4,13 +4,13 @@ import { db } from "@/lib/db";
 export async function PUT(req, { params }) {
   try {
     const { id } = params;
-    const { first_name, last_name, role, section_id, staff_id } = await req.json();
+    const { first_name, last_name, role, section_id, staff_id, email } = await req.json();
 
     const { rowCount } = await db.query(
       `UPDATE staff
-       SET first_name=$1, last_name=$2, role=$3, section_id=$4
-       WHERE id=$5 AND is_deleted=false`,
-      [first_name, last_name, role, section_id, id]
+       SET first_name=$1, last_name=$2, role=$3, section_id=$4, email=$5
+       WHERE id=$6 AND is_deleted=false`,
+      [first_name, last_name, role, section_id, email, id]
     );
 
     const detail = "staff_id = " + id +" change ..."///add more

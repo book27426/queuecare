@@ -15,12 +15,18 @@ export async function POST(req) {
     }
 
     const { rows } = await db.query(
-      `INSERT INTO user (name, cookie_token, phone_num)
-       VALUES ($1, $2, $3)`,
-      [name, cookie_token, phone_num]
+      `INSERT INTO user (name, phone_num)
+       VALUES ($1, $2)`,
+      [name, phone_num]
     );
 
     const user_id = rows[0].id;
+
+    await db.query(
+      `INSERT INTO cookie (cookie_token, user_id)
+       VALUES ($1, $2)`,
+      [cookie_token, user_id]
+    );
 
     await db.query(
       `INSERT INTO log (user_id, action_type,target)

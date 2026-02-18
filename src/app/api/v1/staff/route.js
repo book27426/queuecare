@@ -3,17 +3,17 @@ import { db } from "@/lib/db";
 
 export async function POST(req) {
   try {
-    const { role, first_name, last_name, token, section_id, staff_id } = await req.json();
+    const { role, first_name, last_name, token, section_id, staff_id, email } = await req.json();
 
     if (!role || !token) {
       return NextResponse.json({ message: "role and token required" }, { status: 400 });
     }
 
     const { rows } = await db.query(
-      `INSERT INTO staff (role, first_name, last_name, token, section_id)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO staff (role, first_name, last_name, token, email, section_id)
+       VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING *`,
-      [role, first_name, last_name, token, section_id]
+      [role, first_name, last_name, token, email, section_id]
     );
 
     await db.query(
