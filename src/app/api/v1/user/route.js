@@ -16,7 +16,8 @@ export async function POST(req) {
 
     const { rows } = await db.query(
       `INSERT INTO users (name, phone_num)
-       VALUES ($1, $2)`,
+       VALUES ($1, $2)
+       RETURNING id`,
       [name, phone_num]
     );
 
