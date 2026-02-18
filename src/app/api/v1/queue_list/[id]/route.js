@@ -18,13 +18,13 @@ export async function GET(_, context) {
 export async function PUT(req, context) {
   try {
     const { id } = await context.params;
-    const { first_name, last_name, role, section_id, staff_id } = await req.json();
+    const { wait_default, name, section_id, staff_id } = await req.json();
 
     const { rowCount } = await db.query(
-      `UPDATE staff
-       SET first_name=$1, last_name=$2, role=$3, section_id=$4
-       WHERE id=$5 AND is_deleted=false`,
-      [first_name, last_name, role, section_id, id]
+      `UPDATE queue_list
+       SET wait_default=$1, name=$2, section_id=$3
+       WHERE id=$4 AND is_deleted=false`,
+      [wait_default, name, section_id, id]
     );
 
     const detail = "queueu_list_id = " + id +" change ..."///add more
