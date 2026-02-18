@@ -61,7 +61,7 @@ export async function DELETE(req, context) {
       [staff_id, "delete", detail, "section"]
     );
 
-    return NextResponse.json({ message: "Soft deleted" });
+    return NextResponse.json({ message: "deleted" });
   } catch {
     return NextResponse.json({ message: "Error" }, { status: 500 });
   }
