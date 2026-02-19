@@ -13,10 +13,10 @@ export async function POST(req) {
     }
 
     const { rows } = await db.query(
-      `INSERT INTO section (name, parent_id, depth_int)
-       VALUES ($1,$2,$3)
+      `INSERT INTO section (name, parent_id, wait_default, predict_time, depth_int)
+       VALUES ($1,$2,$3,$4,$5)
        RETURNING *`,
-      [name, parent_id || null, depth_int || 0]
+      [name, parent_id || null,wait_default || 5,predict_time || 5, depth_int || 0]
     );
 
     await db.query(
