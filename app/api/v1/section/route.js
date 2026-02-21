@@ -3,12 +3,12 @@ import { db } from "@/lib/db";
 import { verifyStaff } from "@/lib/auth";
 export async function POST(req) {
   try {
-    // 🔐 1. Verify staff
+    // 1. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error) return auth.error;
     
     const staff_id = auth.staff_id;
-    // 📦 2. Get request body
+    // 2. Get request body
     const {
       name,
       parent_id,
@@ -25,7 +25,7 @@ export async function POST(req) {
     }
 
 
-    // 💾 3. Insert section
+    // 3. Insert section
     const section = await db.query(
       `INSERT INTO section 
         (name, parent_id, wait_default, predict_time, depth_int)
@@ -47,7 +47,7 @@ export async function POST(req) {
     );
 
     return NextResponse.json({ success: true,data: section.rows[0]}, { status: 201 });
-    
+
   } catch (err) {
     console.error(err);
     return NextResponse.json(

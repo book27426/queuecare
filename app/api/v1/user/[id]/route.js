@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
 export async function GET(_, context) {
-  const { id } = await context.params;
+  const searchParams = useSearchParams(req.url);
+  const id = searchParams.get("id");
   const { rows } = await db.query(
     `SELECT * FROM users WHERE id=$1 AND is_deleted=false`,
     [id]
@@ -15,7 +16,8 @@ export async function GET(_, context) {
 }
 
 export async function PUT(req, context) {
-  const { id } = await context.params;
+  const searchParams = useSearchParams(req.url);
+  const id = searchParams.get("id");
   const { name, staff_id } = await req.json();
   await db.query(
     `UPDATE users SET name=$1 WHERE id=$3`,
@@ -33,7 +35,8 @@ export async function PUT(req, context) {
 }
 
 export async function DELETE(req, context) {
-  const { id } = await context.params;
+  const searchParams = useSearchParams(req.url);
+  const id = searchParams.get("id");
   const { staff_id } = await req.json();
   await db.query(
     `UPDATE users SET is_deleted=true WHERE id=$1`,
