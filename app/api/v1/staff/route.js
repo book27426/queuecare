@@ -225,7 +225,6 @@ export async function PUT(req) {
     );
 
     await client.query("COMMIT");
-
     return NextResponse.json({ message: "updated" });
   } catch (err) {
     console.error("Update staff error:", err);
