@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyStaff } from "@/lib/auth";
 export async function POST(req) {
+  const client = await db.connect();
+
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
@@ -24,6 +26,7 @@ export async function POST(req) {
       );
     }
 
+    await client.query("BEGIN");
 
     // 3. Insert section
     const section = await db.query(
@@ -46,13 +49,21 @@ export async function POST(req) {
       [staff_id, "create", "section"]
     );
 
+    await client.query("COMMIT");
+
     return NextResponse.json({ success: true,data: section.rows[0]}, { status: 201 });
 
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
     console.error(err);
     return NextResponse.json(
       { message: "internal server error" },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }

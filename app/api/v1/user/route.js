@@ -55,7 +55,7 @@ export async function POST(req) {
       {
         success: true,
         user_id,
-        token: token, // return raw token only once
+        token: token, // return raw token only once then user side store it
       },
       { status: 201 }
     );

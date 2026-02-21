@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyStaff, verifyFirebaseToken } from "@/lib/auth";
 
-
 export async function POST(req) {
   let email, first_name, last_name, uid;
   const role = "staff";
@@ -15,13 +14,17 @@ export async function POST(req) {
     uid = user.uid
   } catch (err) { return NextResponse.json( { message: "Unauthorized" }, { status: 401 } ); }
 
+  const client = await db.connect();
+
   try {
     let result;
     let actionType = "create";
     let statusCode = 201;
     let actionDetail = null;
     
-    const existing = await db.query(
+    await client.query("BEGIN");
+
+    const existing = await client.query(
       `SELECT id, is_deleted FROM staff WHERE uid=$1`,
       [uid]
     );
@@ -30,7 +33,7 @@ export async function POST(req) {
 
     if (staff && staff.is_deleted) {
       // Exists & is_deleted
-      result = await db.query(
+      result = await client.query(
         `UPDATE staff
         SET is_deleted = false
         WHERE uid=$1
@@ -43,14 +46,14 @@ export async function POST(req) {
       statusCode = 200;
       const staff_id = result.rows[0].id;
 
-      await db.query(
+      await client.query(
         `INSERT INTO log (staff_id, action_type, action, target)
         VALUES ($1, $2, $3, $4)`,
         [staff_id, actionType,actionDetail, "staff"]
       );
     }else if (staff && !staff.is_deleted) {
       // Already exists
-      result = await db.query(
+      result = await client.query(
         `SELECT * FROM staff WHERE uid=$1`,
         [uid]
       );
@@ -58,7 +61,7 @@ export async function POST(req) {
 
     } else{
       // 3. Insert section
-      result = await db.query(
+      result = await client.query(
         `INSERT INTO staff (role, first_name, last_name, uid, email)
         VALUES ($1,$2,$3,$4,$5)
         RETURNING *`,
@@ -68,12 +71,14 @@ export async function POST(req) {
       statusCode = 201;
       const staff_id = result.rows[0].id;
 
-      await db.query(
+      await client.query(
         `INSERT INTO log (staff_id, action_type, action, target)
          VALUES ($1, $2, $3, $4)`,
         [staff_id, actionType,actionDetail, "staff"]
       );
     }
+
+    await client.query("COMMIT");
 
     return NextResponse.json(
       { success: true, data: result.rows[0] },
@@ -81,11 +86,17 @@ export async function POST(req) {
     );
 
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
     console.error(err);
     return NextResponse.json(
       { message: "error creating staff" },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }
 
@@ -132,6 +143,8 @@ export async function GET(req) {
 }
 
 export async function PUT(req) {
+  const client = await db.connect();
+
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
@@ -164,8 +177,10 @@ export async function PUT(req) {
       );
     }
 
+    await client.query("BEGIN");
+
     // 4. Update staff
-    const { rowCount } = await db.query(
+    const { rowCount } = await client.query(
       `UPDATE staff
        SET 
          first_name = COALESCE($1, first_name),
@@ -178,6 +193,7 @@ export async function PUT(req) {
     );
 
     if (!rowCount) {
+      await client.query("ROLLBACK");
       return NextResponse.json(
         { message: "Not found" },
         { status: 404 }
@@ -194,19 +210,29 @@ export async function PUT(req) {
     if (email !== undefined) changes.push("email");
 
     const detail = `Updated staff ${id}: ${changes.join(", ")}`;
-    await db.query(
+    await client.query(
       `INSERT INTO log (staff_id, action_type, action, target)
        VALUES ($1, $2, $3, $4)`,
       [staff_id, "update", detail, "staff"]
     );
 
+    await client.query("COMMIT");
+
     return NextResponse.json({ message: "updated" });
-  } catch {
+  } catch (err) {
+    console.error("Update staff error:", err);
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     return NextResponse.json({ message: "error" }, { status: 500 });
+  } finally {
+    client.release();
   }
 }
 
-export async function DELETE(req, context) {
+export async function DELETE(req) {
+  const client = await db.connect();
+  
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
@@ -218,20 +244,23 @@ export async function DELETE(req, context) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
-    if (!id) {
+    if (!id || isNaN(id)) {
       return NextResponse.json(
-        { message: "id is required" },
+        { message: "valid id is required" },
         { status: 400 }
       );
     }
 
+    await client.query("BEGIN");
+
     // 3. Soft delete
-    const { rowCount } = await db.query(
+    const { rowCount } = await client.query(
       `UPDATE staff SET is_deleted=true WHERE id=$1 AND is_deleted=false`,
       [id]
     );
 
     if (!rowCount) {
+      await client.query("ROLLBACK");
       return NextResponse.json(
         { message: "Not found" },
         { status: 404 }
@@ -239,15 +268,23 @@ export async function DELETE(req, context) {
     }
 
     // 4. Insert log
-    const detail = "staff_id = " + id
-    await db.query(
+    const detail = `Deleted staff ${id}`;
+    await client.query(
       `INSERT INTO log (staff_id, action_type, action, target)
       VALUES ($1, $2, $3, $4)`,
       [staff_id, "delete", detail, "staff"]
     );
 
+    await client.query("COMMIT");
+
     return NextResponse.json({ message: "deleted" });
-  } catch {
+  } catch (err) {
+    console.error("DELETE staff error:", err);
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
     return NextResponse.json({ message: "error" }, { status: 500 });
+  } finally {
+    client.release();
   }
 }
