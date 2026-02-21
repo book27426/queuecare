@@ -155,9 +155,9 @@ export async function PUT(req) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
-    if (!id) {
+    if (!id || isNaN(id)) {
       return NextResponse.json(
-        { message: "id is required" },
+        { message: "valid id is required" },
         { status: 400 }
       );
     }
@@ -173,6 +173,14 @@ export async function PUT(req) {
     ) {
       return NextResponse.json(
         { message: "No fields to update" },
+        { status: 400 }
+      );
+    }
+
+    if (staff_id === id && role && auth.role == "staff") {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "cannot change your own role" },
         { status: 400 }
       );
     }

@@ -26,27 +26,52 @@ export async function POST(req) {
       );
     }
 
+    const wait = Number(wait_default ?? 5);
+    const predict = Number(predict_time ?? 5);
+    const depth = Number(depth_int ?? 0);
+    const parent = parent_id ? Number(parent_id) : null;
+
+    if (
+      isNaN(wait) || wait < 0 ||
+      isNaN(predict) || predict < 0 ||
+      isNaN(depth) || depth < 0) {
+      return NextResponse.json(
+        { message: "invalid numeric values" },
+        { status: 400 }
+      );
+    }
+
     await client.query("BEGIN");
 
+    if (parent) {
+      const parentCheck = await client.query(
+        `SELECT id FROM section WHERE id=$1`,
+        [parent]
+      );
+
+      if (!parentCheck.rowCount) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { message: "parent section not found" },
+          { status: 400 }
+        );
+      }
+    }
+
     // 3. Insert section
-    const section = await db.query(
+    const section = await client.query(
       `INSERT INTO section 
         (name, parent_id, wait_default, predict_time, depth_int)
        VALUES ($1,$2,$3,$4,$5)
        RETURNING *`,
-      [
-        name,
-        parent_id ?? null,
-        wait_default ?? 5,
-        predict_time ?? 5,
-        depth_int ?? 0
-      ]
+      [name, parent, wait, predict, depth]
     );
 
-    await db.query(
-      `INSERT INTO log (staff_id, action_type, target)
-       VALUES ($1, $2, $3)`,
-      [staff_id, "create", "section"]
+    const detail = `Created section ${section.rows[0].id} (${name})`;
+    await client.query(
+      `INSERT INTO log (staff_id, action_type,action, target)
+       VALUES ($1, $2, $3, $4)`,
+      [staff_id, "create",detail, "section"]
     );
 
     await client.query("COMMIT");
