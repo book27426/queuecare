@@ -3,11 +3,12 @@ import { db } from "@/lib/db";
 import crypto from "crypto";
 
 export async function POST(req) {
-  try {
-    // 1. Get request body
-    const body = await req.json();
+  const client = await db.connect();
 
-    const { name, phone_num} = body;
+  try {
+    const body = await req.json();
+    const { name, phone_num } = body;
+
     if (!name) {
       return NextResponse.json(
         { message: "name is required" },
@@ -15,12 +16,17 @@ export async function POST(req) {
       );
     }
 
-    // 2. Generate secure token
+    // Generate secure token
     const token = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
 
-    // 3. Insert section
-    const { rows } = await db.query(
+    await client.query("BEGIN");
+
+    // 1️. Insert user
+    const { rows } = await client.query(
       `INSERT INTO users (name, phone_num)
        VALUES ($1, $2)
        RETURNING id`,
@@ -29,33 +35,42 @@ export async function POST(req) {
 
     const user_id = rows[0].id;
 
-    // 5. Insert tokendb
-    await db.query(
+    // 2️. Insert token
+    await client.query(
       `INSERT INTO user_token (token, user_id)
        VALUES ($1, $2)`,
       [hashedToken, user_id]
     );
 
-    // 5. Insert log
-    await db.query(
-      `INSERT INTO log (user_id, action_type,target)
+    // 3️. Insert log
+    await client.query(
+      `INSERT INTO log (user_id, action_type, target)
        VALUES ($1, $2, $3)`,
       [user_id, "create", "user"]
     );
+
+    await client.query("COMMIT");
 
     return NextResponse.json(
       {
         success: true,
         user_id,
-        token: token
+        token: token, // return raw token only once
       },
       { status: 201 }
     );
+
   } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
     return NextResponse.json(
-      { message: err.message },
+      { message: "Internal Server Error" },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }
 
