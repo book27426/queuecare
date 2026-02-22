@@ -95,15 +95,39 @@ export async function POST(req) {
 
 export async function GET(req) {
   try {
-    // 1. Verify staff
+    // 1. Get id params
+    const { searchParams} = new URL(req.url);
+    const id = searchParams.get("id");
+    const name = searchParams.get("name");
+
+    if (name) {
+      const userAuth = await verifyUser(req);
+      if (userAuth.error) return userAuth.error;
+
+      const { rows } = await db.query(
+        `
+        SELECT id, name, default_wait_time, predicted_time
+        FROM section
+        WHERE name ILIKE '%' || $1 || '%'
+        AND is_deleted = false
+        `,
+        [name]
+      );
+
+      return NextResponse.json({
+        mode: "public-search",
+        data: rows
+      });
+    }
+
+    // 2. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error) return auth.error;
 
-    // 2. Get id params
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    const { section_id: staffSectionId } = auth;
+    const sectionId = Number(id);
 
-    if (!id || isNaN(sectionId)) {
+    if (!Number.isInteger(sectionId) || sectionId <= 0) {
       return NextResponse.json(
         { message: "valid id is required" },
         { status: 400 }
@@ -111,19 +135,74 @@ export async function GET(req) {
     }
 
     // 3. GET section
-    const { rows } = await db.query(
+    const { rows: sectionRows } = await db.query(
       `SELECT * FROM section
-      WHERE id=$1 AND is_deleted=false`,
-      [id]
+       WHERE id=$1 AND is_deleted=false`,
+      [sectionId]
     );
 
-    if (!rows.length)
+    if (!sectionRows.length) {
       return NextResponse.json(
         { message: "Not found" },
         { status: 404 }
       );
+    }
 
-    return NextResponse.json(rows[0]);
+    const section = sectionRows[0];
+
+    // ✅ CASE A: Staff belongs to THIS section
+    if (staffSectionId === sectionId) {
+      const { rows: subSections } = await db.query(
+        `SELECT * FROM section
+         WHERE parent_id = $1
+         AND is_deleted=false`,
+        [sectionId]
+      );
+
+      const { rows: queues } = await db.query(
+        `SELECT * FROM queue
+         WHERE section_id = $1
+         AND status='waiting'`,
+        [sectionId]
+      );
+
+      return NextResponse.json({
+        mode: "main-section",
+        section,
+        sub_sections: subSections,
+        queues
+      });
+    }
+
+    // ✅ CASE B: Staff belongs to SUBSECTION of requested section
+    const { rows: relation } = await db.query(
+      `
+      SELECT 1
+      FROM section child
+      WHERE child.id = $1
+      AND child.parent_id = $2
+      `,
+      [staffSectionId, sectionId]
+    );
+
+    if (relation.length) {
+      const { rows: ownSection } = await db.query(
+        `SELECT * FROM section
+         WHERE id=$1 AND is_deleted=false`,
+        [staffSectionId]
+      );
+
+      return NextResponse.json({
+        mode: "sub-section-staff",
+        parent_section: section,
+        own_section: ownSection[0]
+      });
+    }
+
+    return NextResponse.json(
+      { message: "Unauthorized" },
+      { status: 403 }
+    );
 
   } catch (err) {
     console.error("Get section error:", err);
