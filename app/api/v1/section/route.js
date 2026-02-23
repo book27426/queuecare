@@ -14,8 +14,7 @@ export async function POST(req) {
     const {
       name,
       parent_id,
-      wait_default,
-      predict_time
+      wait_default
     } = await req.json();
 
     if (!name) {
@@ -26,12 +25,10 @@ export async function POST(req) {
     }
 
     const wait = Number(wait_default ?? 5);
-    const predict = Number(predict_time ?? 5);
     const parent = parent_id ? Number(parent_id) : null;
 
     if (
       isNaN(wait) || wait < 0 ||
-      isNaN(predict) || predict < 0 ||
       isNaN(depth) || depth < 0) {
       return NextResponse.json(
         { message: "invalid numeric values" },
@@ -74,7 +71,7 @@ export async function POST(req) {
         (name, parent_id, wait_default, predict_time, depth_int)
        VALUES ($1,$2,$3,$4,$5)
        RETURNING *`,
-      [name, parent, wait, predict, depth]
+      [name, parent, wait, wait, depth]
     );
 
     const detail = `Created section ${section.rows[0].id} (${name})`;
@@ -118,7 +115,7 @@ export async function GET(req) {
 
       const { rows } = await db.query(
         `
-        SELECT id, name, default_wait_time, predicted_time
+        SELECT id, name, default_wait_time, predict_time
         FROM section
         WHERE name ILIKE '%' || $1 || '%'
         AND is_deleted = false
@@ -342,9 +339,10 @@ export async function PUT(req) {
     }
 
     // 3. Get request body
-    const { name, parent_id} = await req.json();
+    const { name, parent_id, wait_default} = await req.json();
 
     const sectionId = Number(id);
+    const wait = Number(wait_default ?? 5);
     const parent = parent_id ? Number(parent_id) : null;
 
     if (isNaN(sectionId) || (parent !== null && isNaN(parent))) {
@@ -362,6 +360,32 @@ export async function PUT(req) {
         { message: "section cannot be its own parent" },
         { status: 400 }
       );
+    }
+
+    if (parent !== null) {
+      const cycleCheck = await client.query(
+        `
+        WITH RECURSIVE tree AS (
+          SELECT id, parent_id
+          FROM section
+          WHERE id = $1
+          UNION ALL
+          SELECT s.id, s.parent_id
+          FROM section s
+          INNER JOIN tree t ON s.id = t.parent_id
+        )
+        SELECT id FROM tree WHERE id = $2
+        `,
+        [parent, sectionId]
+      );
+
+      if (cycleCheck.rowCount > 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { message: "circular reference detected" },
+          { status: 400 }
+        );
+      }
     }
 
     let depth = 0;
@@ -393,14 +417,14 @@ export async function PUT(req) {
     }
 
     // 4. Update section
-    const { rowCount } = await client.query(
+    const result = await client.query(
       `UPDATE section
-       SET name=$1, parent_id=$2, depth_int=$3
-       WHERE id=$4 AND is_deleted=false`,
-      [name, parent, depth, sectionId]
+       SET name=$1, parent_id=$2, depth_int=$3,wait_default=$4 ,predict_time=$5
+       WHERE id=$6 AND is_deleted=false RETURNING *`,
+      [name, parent, depth, wait, wait, sectionId]
     );
 
-    if (!rowCount) {
+    if (!result.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
         { message: "Not found" },
@@ -408,6 +432,32 @@ export async function PUT(req) {
       );
     }
 
+    // 5️. Recalculate children depth
+    await client.query(
+      `
+      WITH RECURSIVE subtree AS (
+        SELECT id, parent_id, depth_int
+        FROM section
+        WHERE id = $1
+        UNION ALL
+        SELECT s.id, s.parent_id, s.depth_int
+        FROM section s
+        INNER JOIN subtree st ON s.parent_id = st.id
+      )
+      UPDATE section s
+      SET depth_int = (
+        SELECT p.depth_int + 1
+        FROM section p
+        WHERE p.id = s.parent_id
+      )
+      WHERE s.id IN (
+        SELECT id FROM subtree WHERE id != $1
+      )
+      `,
+      [sectionId]
+    );
+
+    /// 6. Insert log
     const detail = `Updated section ${sectionId}:name=${name}, parent=${parent}, depth=${depth}`;
 
     await client.query(
@@ -417,7 +467,7 @@ export async function PUT(req) {
     );
 
     await client.query("COMMIT");
-    return NextResponse.json({ message: "Updated" });
+    return NextResponse.json({ success: true,data: result.rows[0]}, { status: 201 });
   } catch (err) {
     console.error("Update section error:", err);
     try {

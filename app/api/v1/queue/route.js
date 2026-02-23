@@ -6,13 +6,13 @@ export async function POST(req) {
   const client = await db.connect();
 
   try {
-    // 🔐 1. Verify staff
+    // 1. Verify staff
     const auth = await verifyUser(req);
     if (auth.error) return auth.error;
     
     const user_id = auth.user_id;
 
-    // 📦 2. Get request body
+    // 2. Get request body
     let { section_id } = await req.json();
     section_id = Number(section_id);
 
@@ -57,7 +57,7 @@ export async function POST(req) {
     }
 
     
-    // 💾 4. Insert section
+    // 4. Insert section
     const queue = await client.query(
       `INSERT INTO queue (number, user_id, section_id)
         VALUES ($1,$2,$3)
@@ -65,7 +65,7 @@ export async function POST(req) {
       [number, user_id, section_id]
     );
 
-    //  5. Insert log
+    // 5. Insert log
     await client.query(
       `INSERT INTO log (user_id, action_type,target)
         VALUES ($1, $2, $3)`,
@@ -92,12 +92,10 @@ export async function POST(req) {
 
 export async function GET(req) {
   try {
-    // 🔐 Try staff first
+
     const staffAuth = await verifyStaff(req);
 
-    // ===============================
     // 🧑‍💼 STAFF VIEW
-    // ===============================
     if (!staffAuth.error) {
       const { section_id } = staffAuth;
 
@@ -162,12 +160,6 @@ export async function PUT(req) {
   const client = await db.connect();
 
   try {
-    // 1. Verify staff
-    const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
-
-    const staff_id = auth.staff_id;
-
     const { searchParams } = new URL(req.url);
     const id = Number(searchParams.get("id"));
 
@@ -178,54 +170,145 @@ export async function PUT(req) {
       );
     }
 
+    await client.query("BEGIN");
+    // 1. Verify User
+    const userAuth = await verifyUser(req);
+
+    if (!userAuth.error) {
+      const { user_id } = userAuth;
+
+      const result = await client.query(
+        `UPDATE queue
+        SET status='cancel', end_at=NOW()
+        WHERE id=$1
+          AND user_id=$2
+          AND status='waiting'
+        RETURNING *`,
+        [id, user_id]
+      );
+
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { message: "queue not found or cannot cancel" },
+          { status: 400 }
+        );
+      }
+
+      await client.query("COMMIT");
+
+      return NextResponse.json({
+        role: "user",
+        success: true,
+        data: result.rows[0]
+      });
+    }
+    // 1. Verify staff
+    const auth = await verifyStaff(req);
+    if (auth.error) {
+      await client.query("ROLLBACK");
+      return auth.error;
+    }
+
+    const { staff_id, staff_section_id } = auth;
+
     // 2. Get request body
     const { status, queue_detail, section_id } = await req.json();
 
-    await client.query("BEGIN");
+    const allowedStatus = [
+      "no_show",
+      "complete",
+      "serving",
+      "transfer"
+    ];
+
+    if (!allowedStatus.includes(status)) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "invalid status" },
+        { status: 400 }
+      );
+    }
+
+    const queueCheck = await client.query(
+      `SELECT id, section_id, status
+      FROM queue
+      WHERE id = $1
+      FOR UPDATE`,
+      [id]
+    );
+
+    if (!queueCheck.rowCount) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "queue not found" },
+        { status: 404 }
+      );
+    }
+
+    const queue = queueCheck.rows[0];
+
+    // Section permission check
+    if (queue.section_id !== staff_section_id) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "not allowed to modify this queue" },
+        { status: 403 }
+      );
+    }
 
     let result;
-
     
-    if (status === "cancel" || status === "no_show") {
-      // 3.1 UPDATE queue cancel and no_show
+    if (status === "no_show") {
+      // 3.1 UPDATE queue no_show
       result = await client.query(
         `UPDATE queue
-         SET status=$1, end_at=NOW()
-         WHERE id=$2 AND status IN ('waiting','serving')`,
-        [status, id]
+         SET status='no_show', end_at=NOW()
+         WHERE id=$1 AND status='serving' AND staff_id=$2
+         RETURNING *`,
+        [id, staff_id]
       );
     } else if (status === "complete") {
       // 3.2 UPDATE queue complete
       result = await client.query(
         `UPDATE queue
-         SET status=$1, detail=$2, end_at=NOW()
-         WHERE id=$3 AND status='serving'`,
-        [status, queue_detail, id]
+         SET status='complete', detail=$1, end_at=NOW()
+         WHERE id=$2 AND status='serving' AND staff_id=$3
+         RETURNING *`,
+        [queue_detail, id, staff_id]
       );
     } else if (status === "serving") {
       // 3.3 UPDATE queue serving
       result = await client.query(
         `UPDATE queue
          SET status='serving', start_at=NOW(), staff_id=$2
-         WHERE id=$1 AND status='waiting'`,
+         WHERE id=$1 AND status='waiting'
+         RETURNING *`,
         [id, staff_id]
       );
     } else if (status === "transfer") {
 
-      if (!section_id) {
+      const sectionCheck = await client.query(
+        `SELECT id FROM section
+        WHERE id=$1 AND is_deleted=false`,
+        [section_id]
+      );
+
+      if (!sectionCheck.rowCount) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "section_id required for transfer" },
+          { message: "invalid target section" },
           { status: 400 }
         );
       }
+
       // 3.4.1 UPDATE queue transfer
       const updateOld = await client.query(
         `UPDATE queue
-         SET status='transferred', staff_id=$2
-         WHERE id=$1 AND status IN ('waiting','serving')
+         SET status='transfer', staff_id=$2, detail=$3
+         WHERE id=$1 AND status='serving' AND staff_id=$4
          RETURNING *`,
-        [id, staff_id]
+        [id, staff_id, queue_detail, staff_id]
       );
 
       if (!updateOld.rowCount) {
@@ -277,7 +360,7 @@ export async function PUT(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ message: "updated successfully" });
+    return NextResponse.json({ success: true,data: result.rows[0]}, { status: 200 });
 
   } catch (err) {
     console.error("Update queue error:", err);
