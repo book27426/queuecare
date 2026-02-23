@@ -14,7 +14,6 @@ export async function POST(req) {
     const {
       name,
       parent_id,
-      depth_int,
       wait_default,
       predict_time
     } = await req.json();
@@ -28,7 +27,6 @@ export async function POST(req) {
 
     const wait = Number(wait_default ?? 5);
     const predict = Number(predict_time ?? 5);
-    const depth = Number(depth_int ?? 0);
     const parent = parent_id ? Number(parent_id) : null;
 
     if (
@@ -43,6 +41,8 @@ export async function POST(req) {
 
     await client.query("BEGIN");
 
+    let depth = 0;
+
     if (parent) {
       const parentCheck = await client.query(
         `SELECT id FROM section WHERE id=$1`,
@@ -56,6 +56,16 @@ export async function POST(req) {
           { status: 400 }
         );
       }
+
+      depth = parentCheck.rows[0].depth_int + 1;
+    }
+
+    if (depth > 5) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "maximum depth exceeded" },
+        { status: 400 }
+      );
     }
 
     // 3. Insert section
@@ -100,7 +110,9 @@ export async function GET(req) {
     const id = searchParams.get("id");
     const name = searchParams.get("name");
 
+    /// 2.check User search
     if (name) {
+      /// 2.1  Verify User
       const userAuth = await verifyUser(req);
       if (userAuth.error) return userAuth.error;
 
@@ -125,6 +137,14 @@ export async function GET(req) {
     if (auth.error) return auth.error;
 
     const { section_id: staffSectionId } = auth;
+
+    if (!id) {
+      return NextResponse.json(
+        { message: "id is required" },
+        { status: 400 }
+      );
+    }
+
     const sectionId = Number(id);
 
     if (!Number.isInteger(sectionId) || sectionId <= 0) {
@@ -166,11 +186,99 @@ export async function GET(req) {
         [sectionId]
       );
 
+      const { rows: sectionIdsRows } = await db.query(
+        `
+        SELECT id
+        FROM section
+        WHERE id = $1
+          OR parent_id = $1
+        `,
+        [sectionId]
+      );
+
+      const sectionIds = sectionIdsRows.map(row => row.id);
+
+      const { rows: staffs } = await db.query(
+        `
+        SELECT id, name
+        FROM staff
+        WHERE section_id = ANY($1)
+          AND is_deleted = false
+        ORDER BY name ASC
+        `,
+        [sectionIds]
+      );
+
+      // 1️⃣ Hourly breakdown
+      const { rows: hourlyRows } = await db.query(
+        `
+        SELECT
+          TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
+          COUNT(*) FILTER (WHERE status != 'cancelled') AS new_queue,
+          COUNT(*) FILTER (WHERE status = 'completed') AS completed
+        FROM queue
+        WHERE section_id = $1
+          AND created_at >= CURRENT_DATE
+        GROUP BY 1
+        ORDER BY 1
+        `,
+        [sectionId]
+      );
+
+      // 2️⃣ Average operation time
+      const { rows: avgRows } = await db.query(
+        `
+        SELECT
+          AVG(EXTRACT(EPOCH FROM (completed_at - started_at)) / 60)
+            AS avg_operation_minutes
+        FROM queue
+        WHERE section_id = $1
+          AND status = 'completed'
+          AND started_at IS NOT NULL
+          AND completed_at IS NOT NULL
+          AND completed_at >= CURRENT_DATE
+        `,
+        [sectionId]
+      );
+
+      // 3️⃣ Totals
+      const { rows: totalRows } = await db.query(
+        `
+        SELECT
+          COUNT(*) FILTER (WHERE status != 'cancelled') AS total_new,
+          COUNT(*) FILTER (WHERE status = 'completed') AS total_completed
+        FROM queue
+        WHERE section_id = $1
+          AND created_at >= CURRENT_DATE
+        `,
+        [sectionId]
+      );
+
+      const now = new Date();
+      const hoursPassed = Math.max(now.getHours() - 8, 1); // prevent divide by 0
+
+      const stats = {
+        est_new_queue_per_hour:
+          Number(totalRows[0].total_new) / hoursPassed,
+
+        est_complete_case_per_hour:
+          Number(totalRows[0].total_completed) / hoursPassed,
+
+        est_avg_operation_time_per_case_minutes:
+          Number(avgRows[0].avg_operation_minutes) || 0,
+
+        hourly_breakdown: hourlyRows,
+
+        last_updated: new Date().toISOString(),
+      };
+
       return NextResponse.json({
         mode: "main-section",
-        section,
+        section : section,
+        stats: stats,
         sub_sections: subSections,
-        queues
+        queues: queues,
+        staffs: staffs
       });
     }
 
