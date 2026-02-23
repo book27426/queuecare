@@ -6,33 +6,35 @@ export async function POST(req) {
   const client = await db.connect();
 
   try {
-    // 1. Verify staff
+    // 1. Verify user
     const auth = await verifyUser(req);
-    if (auth.error) return auth.error;
+    const user_id = auth?.error ? null : auth.user_id;
     
-    const user_id = auth.user_id;
-
     // 2. Get request body
     let { section_id, name, phone_num } = await req.json();
     section_id = Number(section_id);
 
-    if (!Number.isInteger(section_id) || section_id <= 0) {
+    if (
+      !Number.isInteger(section_id) ||
+      section_id <= 0 ||
+      !name ||
+      !phone_num
+    ) {
       return NextResponse.json(
-        { message: "body is invaild" },
+        { message: "invalid body" },
         { status: 400 }
       );
     }
-    
+
     await client.query("BEGIN");
 
     const sectionCheck = await client.query(
       `SELECT id FROM section
-      WHERE id=$1 AND is_deleted=false
-      FOR UPDATE`,
+       WHERE id = $1 AND is_deleted = false
+       FOR UPDATE`,
       [section_id]
     );
 
-    // 3. generate number
     if (!sectionCheck.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
@@ -41,11 +43,14 @@ export async function POST(req) {
       );
     }
 
+    // 3. generate number
     let number = "001";
 
     const lastQueue = await client.query(
-      `SELECT number FROM queue
-       WHERE section_id=$1
+      `SELECT number
+       FROM queue
+       WHERE section_id = $1
+         AND queue_date = CURRENT_DATE
        ORDER BY id DESC
        LIMIT 1`,
       [section_id]
@@ -55,26 +60,34 @@ export async function POST(req) {
       const lastNumber = parseInt(lastQueue.rows[0].number, 10);
       number = String(lastNumber + 1).padStart(3, "0");
     }
+    // 4. Generate token
+    let token = null;
 
+    if (user_id === null) {
+      token = randomUUID();
+    }
     
-    // 4. Insert section
-    const queue = await client.query(
-      `INSERT INTO queue (number, user_id, section_id)
-        VALUES ($1,$2,$3)
-        RETURNING *`,
-      [number, user_id, section_id]
+    // 5. Insert section
+    const queueInsert = await client.query(
+      `INSERT INTO queue 
+        (number, name, phone_num, user_id, section_id, token)
+        VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [number, name, phone_num, user_id, section_id, token]
     );
 
-    // 5. Insert log
-    await client.query(
-      `INSERT INTO log (user_id, action_type,target)
-        VALUES ($1, $2, $3)`,
-      [user_id, "create", "queue"]
-    );
+    // 6. Insert log
+    if (user_id) {
+      await client.query(
+        `INSERT INTO log (user_id, action_type, target)
+         VALUES ($1, $2, $3)`,
+        [user_id, "create", "queue"]
+      );
+    }
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true,data: queue.rows[0]}, { status: 201 });
+    return NextResponse.json({ success: true,data: queueInsert.rows[0]}, { status: 201 });
   } catch (err) {
     try {
       await client.query("ROLLBACK");
@@ -123,7 +136,7 @@ export async function GET(req) {
     const { user_id } = userAuth;
 
     const { rows } = await db.query(
-      `SELECT *
+      `SELECT id, number, name, phone_num, start_at, end_at, status
        FROM queue
        WHERE user_id = $1
        ORDER BY created_at DESC`,
@@ -322,15 +335,16 @@ export async function PUT(req) {
       const oldQueue = updateOld.rows[0];
       // 3.4.2 INSERT queue
       result = await client.query(
-        `INSERT INTO queue (number, detail, queue_date, user_id, section_id, status)
-         VALUES ($1,$2,$3,$4,$5,'waiting')
+        `INSERT INTO queue (number, detail, queue_date, user_id, section_id, status, token)
+         VALUES ($1,$2,$3,$4,$5,'waiting',$6)
          RETURNING *`,
         [
           oldQueue.number,
           oldQueue.detail,
           oldQueue.queue_date,
           oldQueue.user_id,
-          section_id
+          section_id,
+          oldQueue.token
         ]
       );
     } else {

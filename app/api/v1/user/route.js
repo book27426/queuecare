@@ -6,28 +6,39 @@ export async function POST(req) {
   const client = await db.connect();
 
   try {
-    const { phone_num } = await req.json();
+    const { ticket, queue_token } = await req.json();
+
+    if (!ticket) {
+      return NextResponse.json(
+        { message: "ticket required" },
+        { status: 400 }
+      );
+    }
 
     await client.query("BEGIN");
 
+    // Lock OTP row to prevent replay/race condition
     const otpResult = await client.query(
-      `SELECT id FROM phone_otps
-       WHERE phone_num=$1
-       AND phone_verify=true
+      `SELECT id, phone_num
+       FROM phone_otps
+       WHERE ticket = $1
+       AND phone_verify = true
        AND expires_at > NOW()
-       ORDER BY id DESC
-       LIMIT 1`,
-      [phone_num]
+       FOR UPDATE`,
+      [ticket]
     );
 
     if (!otpResult.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Phone not verified" },
+        { message: "Invalid or expired session" },
         { status: 400 }
       );
     }
 
+    const { id: otp_id, phone_num } = otpResult.rows[0];
+
+    // Find or create user
     let userResult = await client.query(
       `SELECT id FROM users WHERE phone_num=$1`,
       [phone_num]
@@ -37,6 +48,7 @@ export async function POST(req) {
 
     if (userResult.rowCount) {
       user_id = userResult.rows[0].id;
+      
     } else {
       const insertUser = await client.query(
         `INSERT INTO users (phone_num)
@@ -44,21 +56,24 @@ export async function POST(req) {
          RETURNING id`,
         [phone_num]
       );
+
       user_id = insertUser.rows[0].id;
+
       await client.query(
-      `INSERT INTO log (user_id, action_type, target)
-       VALUES ($1, $2, $3)`,
-      [user_id, "create", "user"]
-    );
+        `INSERT INTO log (user_id, action_type, target)
+         VALUES ($1, $2, $3)`,
+        [user_id, "create", "user"]
+      );
     }
-    // Generate secure token
+
+    // Generate secure session token
     const token = crypto.randomBytes(32).toString("hex");
     const hashedToken = crypto
       .createHash("sha256")
       .update(token)
       .digest("hex");
 
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30); // 30 days
 
     await client.query(
       `INSERT INTO user_token (token_hash, user_id, expires_at)
@@ -66,9 +81,19 @@ export async function POST(req) {
       [hashedToken, user_id, expiresAt]
     );
 
+    if (Array.isArray(queue_token) && queue_token.length > 0) {
+      await client.query(
+        `UPDATE queue
+        SET user_id = $1, token = null
+        WHERE token = ANY($2::text[])
+        AND user_id IS NULL`,
+        [user_id, queue_token]//do i need to update phone num
+      );
+    }
+    // DELETE OTP → single use only
     await client.query(
       `DELETE FROM phone_otps WHERE id=$1`,
-      [otpResult.rows[0].id]
+      [otp_id]
     );
 
     await client.query("COMMIT");
@@ -77,7 +102,7 @@ export async function POST(req) {
       {
         success: true,
         user_id,
-        token: token, // return raw token only once then user side store it
+        token // return raw token ONCE
       },
       { status: 201 }
     );
@@ -115,7 +140,7 @@ export async function GET(req) {
 
     // 3. Select users
     const { rows } = await db.query(
-      `SELECT id, phone_num FROM users WHERE id=$1 AND is_deleted=false`,
+      `SELECT id, phone_num FROM users WHERE id=$1`,
       [id]
     );
 
@@ -136,7 +161,14 @@ export async function PUT(req) {
   const client = await db.connect();
 
   try {
-    const { phone_num } = await req.json();
+    const { ticket } = await req.json();
+
+    if (!ticket) {
+      return NextResponse.json(
+        { message: "ticket required" },
+        { status: 400 }
+      );
+    }
 
     const userAuth = await verifyUser(req);
     if (userAuth.error) {
@@ -150,16 +182,15 @@ export async function PUT(req) {
 
     await client.query("BEGIN");
 
-    // 1️⃣ Check verified phone
+    // 1️⃣ Lock verified OTP session
     const otpCheck = await client.query(
-      `SELECT id
+      `SELECT id, phone_num
        FROM phone_otps
-       WHERE phone_num=$1
+       WHERE ticket=$1
        AND phone_verify=true
        AND expires_at > NOW()
-       ORDER BY id DESC
-       LIMIT 1`,
-      [phone_num]
+       FOR UPDATE`,
+      [ticket]
     );
 
     if (!otpCheck.rowCount) {
@@ -170,10 +201,12 @@ export async function PUT(req) {
       );
     }
 
+    const { id: otp_id, phone_num } = otpCheck.rows[0];
+
     // 2️⃣ Check duplicate phone
     const phoneExists = await client.query(
-      `SELECT id FROM users WHERE phone_num=$1`,
-      [phone_num]
+      `SELECT id FROM users WHERE phone_num=$1 AND id <> $2`,
+      [phone_num, user_id]
     );
 
     if (phoneExists.rowCount) {
@@ -184,9 +217,9 @@ export async function PUT(req) {
       );
     }
 
-    // 3️⃣ Get old phone (for logging)
+    // 3️⃣ Get old phone (lock user row)
     const oldUser = await client.query(
-      `SELECT phone_num FROM users WHERE id=$1`,
+      `SELECT phone_num FROM users WHERE id=$1 FOR UPDATE`,
       [user_id]
     );
 
@@ -213,10 +246,10 @@ export async function PUT(req) {
       ]
     );
 
-    // 6️⃣ Cleanup OTP
+    // 6️⃣ Delete OTP (single use)
     await client.query(
       `DELETE FROM phone_otps WHERE id=$1`,
-      [otpCheck.rows[0].id]
+      [otp_id]
     );
 
     await client.query("COMMIT");
@@ -239,59 +272,15 @@ export async function PUT(req) {
 }
 
 export async function DELETE(req) {
-  const client = await db.connect();
-  
-  try {
-    // 1. Get verifyUser
-    const auth = await verifyUser(req);
-    if (auth.error) return auth.error;
+  const auth = await verifyUser(req);
+  if (auth.error) return auth.error;
 
-    const { user_id } = auth;
+  const { token_hash } = auth;
 
-    await client.query("BEGIN");
-    // 3. Soft delete users
-    const { rowCount } = await client.query(
-      `UPDATE users 
-       SET is_deleted=true 
-       WHERE id=$1 AND is_deleted=false`,
-      [user_id]
-    );
+  await db.query(
+    `DELETE FROM user_token WHERE token_hash=$1`,
+    [token_hash]
+  );
 
-    if (!rowCount) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { message: "not found" },
-        { status: 404 }
-      );
-    }
-
-    await client.query(
-      `DELETE FROM user_token WHERE user_id = $1`,
-      [user_id]
-    );
-
-    // 4. INSERT log
-    const detail = "user_id = " + user_id
-    await client.query(
-      `INSERT INTO log (user_id, action_type, action, target)
-      VALUES ($1, $2, $3, $4)`,
-      [user_id, "delete", detail, "user"]
-    );
-
-    await client.query("COMMIT");
-
-    return NextResponse.json({ message: "deleted" });
-  } catch (err) {
-    console.error(err);
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-
-    return NextResponse.json(
-      { message: "Internal Server Error" },
-      { status: 500 }
-    );
-  } finally {
-    client.release();
-  }
+  return NextResponse.json({ message: "logged out" });
 }
