@@ -9,7 +9,7 @@ export async function POST(req) {
     const body = await req.json();
     const { name, phone_num } = body;
 
-    if (!name) {
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json(
         { message: "name is required" },
         { status: 400 }
@@ -23,6 +23,7 @@ export async function POST(req) {
       .update(token)
       .digest("hex");
 
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 90); // 90 days
     await client.query("BEGIN");
 
     // 1️. Insert user
@@ -37,9 +38,9 @@ export async function POST(req) {
 
     // 2️. Insert token
     await client.query(
-      `INSERT INTO user_token (token, user_id)
-       VALUES ($1, $2)`,
-      [hashedToken, user_id]
+      `INSERT INTO user_token (token, user_id, expires_at)
+       VALUES ($1, $2, $3)`,
+      [hashedToken, user_id, expiresAt]
     );
 
     // 3️. Insert log
@@ -93,7 +94,7 @@ export async function GET(req) {
 
     // 3. Select users
     const { rows } = await db.query(
-      `SELECT * FROM users WHERE id=$1 AND is_deleted=false`,
+      `SELECT id, name, phone_num FROM users WHERE id=$1 AND is_deleted=false`,
       [id]
     );
 
@@ -114,30 +115,139 @@ export async function PUT(req) {
   const client = await db.connect();
 
   try {
-    const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    const { name, phone_num } = await req.json();
 
-    const { staff_id } = auth;
+    const staffAuth = await verifyStaff(req);
 
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    if (!staffAuth.error) {
+      const { staff_id } = staffAuth;
 
-    if (!id) {
+      const { searchParams } = new URL(req.url);
+      const id = searchParams.get("id");
+
+      if (!id) {
+        return NextResponse.json(
+          { message: "id required" },
+          { status: 400 }
+        );
+      }
+
+      await client.query("BEGIN");
+
+      const result = await client.query(
+        `UPDATE "user"
+         SET name=$1
+         WHERE id=$2 AND is_deleted=false
+         RETURNING *`,
+        [name, id]
+      );
+
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { message: "User not found" },
+          { status: 404 }
+        );
+      }
+
+      await client.query(
+        `INSERT INTO log (staff_id, action_type, action, target)
+         VALUES ($1, $2, $3, $4)`,
+        [staff_id, "update", `Updated user ${id}`, "user"]
+      );
+
+      await client.query("COMMIT");
+
       return NextResponse.json(
-        { message: "id required" },
+        { success: true, data: result.rows[0] },
+        { status: 200 }
+      );
+    }
+
+    const userAuth = await verifyUser(req);
+
+    if (userAuth.error) {
+      return NextResponse.json(
+        { message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const { user_id } = userAuth;
+
+    await client.query("BEGIN");
+
+    // Check phone_verify
+    const userCheck = await client.query(
+      `SELECT phone_verify FROM "user" WHERE id=$1`,
+      [user_id]
+    );
+
+    if (!userCheck.rowCount) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "User not found" },
+        { status: 404 }
+      );
+    }
+
+    if (userCheck.rows[0].phone_verify === true) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "Phone already verified. Cannot edit phone." },
         { status: 400 }
       );
     }
 
-    const { name } = await req.json();
+    const result = await client.query(
+      `UPDATE "user"
+       SET name=$1, phone_num=$2
+       WHERE id=$3
+       RETURNING *`,
+      [name, phone_num, user_id]
+    );
+
+    await client.query(
+      `INSERT INTO log (user_id, action_type, action, target)
+       VALUES ($1, $2, $3, $4)`,
+      [user_id, "update", `Updated user ${user_id}`, "user"]
+    );
+
+    await client.query("COMMIT");
+
+    return NextResponse.json(
+      { success: true, data: result.rows[0] },
+      { status: 200 }
+    );
+
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    return NextResponse.json(
+      { message: "Internal Server Error" },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
+  }
+}
+
+export async function DELETE(req) {
+  const client = await db.connect();
+  
+  try {
+    // 1. Get verifyUser
+    const auth = await verifyUser(req);
+    if (auth.error) return auth.error;
+
+    const { user_id } = auth;
 
     await client.query("BEGIN");
-
+    // 3. Soft delete users
     const { rowCount } = await client.query(
       `UPDATE users 
-       SET name=$1 
-       WHERE id=$2 AND is_deleted=false`,
-      [name, id]
+       SET is_deleted=true 
+       WHERE id=$1 AND is_deleted=false`,
+      [user_id]
     );
 
     if (!rowCount) {
@@ -149,75 +259,32 @@ export async function PUT(req) {
     }
 
     await client.query(
-      `INSERT INTO log (staff_id, action_type, action, target)
-       VALUES ($1, $2, $3, $4)`,
-      [staff_id, "update", `Updated user ${id}`, "user"]
+      `DELETE FROM user_token WHERE user_id = $1`,
+      [user_id]
+    );
+
+    // 4. INSERT log
+    const detail = "user_id = " + user_id
+    await client.query(
+      `INSERT INTO log (user_id, action_type, action, target)
+      VALUES ($1, $2, $3, $4)`,
+      [user_id, "delete", detail, "user"]
     );
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ message: "updated" });
-
+    return NextResponse.json({ message: "deleted" });
   } catch (err) {
+    console.error(err);
     try {
       await client.query("ROLLBACK");
     } catch {}
-    
+
     return NextResponse.json(
       { message: "Internal Server Error" },
       { status: 500 }
     );
   } finally {
     client.release();
-  }
-}
-
-export async function DELETE(req) {
-  try {
-    // 1. Get verifyStaff
-    const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
-
-    const { staff_id } = auth;
-
-    // 2. Get id params
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json(
-        { message: "id required" },
-        { status: 400 }
-      );
-    }
-
-    // 3. Soft delete users
-    const { rowCount } = await db.query(
-      `UPDATE users 
-       SET is_deleted=true 
-       WHERE id=$1 AND is_deleted=false`,
-      [id]
-    );
-
-    if (!rowCount) {
-      return NextResponse.json(
-        { message: "not found" },
-        { status: 404 }
-      );
-    }
-    // 4. INSERT log
-    const detail = "user_id = " + id
-    await db.query(
-      `INSERT INTO log (staff_id, action_type, action, target)
-      VALUES ($1, $2, $3, $4)`,
-      [staff_id, "delete", detail, "user"]
-    );
-
-    return NextResponse.json({ message: "deleted" });
-  } catch {
-    return NextResponse.json(
-      { message: "Unauthorized" },
-      { status: 401 }
-    );
   }
 }

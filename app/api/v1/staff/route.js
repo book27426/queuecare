@@ -149,13 +149,65 @@ export async function PUT(req) {
     // 1. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error) return auth.error;
+
+    if (!["admin", "super_admin"].includes(auth.role)) {
+      const { invite_code } = await req.json();
+
+      if(!invite_code){
+        return NextResponse.json(
+          { message: "invite_code is required" },
+          { status: 400 }
+        );
+      }
+
+      await client.query("BEGIN");
+
+      const { rows } = await client.query(
+        `SELECT id
+        FROM section
+        WHERE invite_code = $1
+          AND code_outdate >= NOW()
+          AND is_deleted = false`,
+        [invite_code]
+      );
+
+      if (!rows.length) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { message: "invalid or expired invite code" },
+          { status: 400 }
+        );
+      }
+
+      const section_id = rows[0].id;
+
+      const result = await client.query(
+        `UPDATE staff
+        SET section_id = $2
+        WHERE id = $1
+          AND is_deleted = false
+        RETURNING *`,
+        [auth.staff_id, section_id]
+      );
+
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { message: "staff not found" },
+          { status: 404 }
+        );
+      }
+      await client.query("COMMIT");
+
+      return NextResponse.json({ success: true,data: result.rows[0]}, { status: 200 });
+    }
     
     const staff_id = auth.staff_id;
     // 2. Get id params
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    const id = Number(searchParams.get("id"));
 
-    if (!id || isNaN(id)) {
+    if (!Number.isInteger(id)) {
       return NextResponse.json(
         { message: "valid id is required" },
         { status: 400 }
@@ -177,18 +229,44 @@ export async function PUT(req) {
       );
     }
 
-    if (staff_id === id && role && auth.role == "staff") {
-      await client.query("ROLLBACK");
+    if (staff_id === id) {
       return NextResponse.json(
         { message: "cannot change your own role" },
         { status: 400 }
       );
     }
 
+    const { rows: targetRows } = await client.query(
+      `SELECT role FROM staff WHERE id=$1`,
+      [id]
+    );
+
+    if (!targetRows.length) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ message: "Not found" }, { status: 404 });
+    }
+
+    const targetRole = targetRows[0].role;
+
+    if (targetRole === "super_admin" && auth.role !== "super_admin") {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "cannot modify super_admin" },
+        { status: 403 }
+      );
+    }
+
+    if (auth.role != "super_admin" && role == "super_admin"){
+      return NextResponse.json(
+        { message: "admin can't create super_admin" },
+        { status: 403 }
+      );
+    }
+
     await client.query("BEGIN");
 
     // 4. Update staff
-    const { rowCount } = await client.query(
+    const result = await client.query(
       `UPDATE staff
        SET 
          first_name = COALESCE($1, first_name),
@@ -200,7 +278,7 @@ export async function PUT(req) {
       [first_name, last_name, role, section_id, email, id]
     );
 
-    if (!rowCount) {
+    if (!result.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
         { message: "Not found" },
@@ -225,7 +303,7 @@ export async function PUT(req) {
     );
 
     await client.query("COMMIT");
-    return NextResponse.json({ message: "updated" });
+    return NextResponse.json({ success: true,data: result.rows[0]}, { status: 200 });
   } catch (err) {
     console.error("Update staff error:", err);
     try {
@@ -244,6 +322,13 @@ export async function DELETE(req) {
     // 1. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error) return auth.error;
+
+    if (!["admin", "super_admin"].includes(auth.role)) {
+      return NextResponse.json(
+        { message: "admin only" },
+        { status: 403 }
+      );
+    }
     
     const staff_id = auth.staff_id;
 
