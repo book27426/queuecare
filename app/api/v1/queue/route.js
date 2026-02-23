@@ -13,12 +13,12 @@ export async function POST(req) {
     const user_id = auth.user_id;
 
     // 2. Get request body
-    let { section_id } = await req.json();
+    let { section_id, name, phone_num } = await req.json();
     section_id = Number(section_id);
 
     if (!Number.isInteger(section_id) || section_id <= 0) {
       return NextResponse.json(
-        { message: "section_id is invaild" },
+        { message: "body is invaild" },
         { status: 400 }
       );
     }
