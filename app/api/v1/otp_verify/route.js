@@ -27,13 +27,13 @@ export async function POST(req) {
 
     await client.query(
       `
-      INSERT INTO otp_verification
-      (phone_num, ticket, otp_hash, expires_at, attempt, phone_verify)
+      INSERT INTO phone_otps
+      (phone_num, ticket, otp, expires_at, attempt, phone_verify)
       VALUES ($1, $2, $3, $4, 0, false)
       ON CONFLICT (phone_num)
       DO UPDATE SET
         ticket = EXCLUDED.ticket,
-        otp_hash = EXCLUDED.otp_hash,
+        otp = EXCLUDED.otp,
         expires_at = EXCLUDED.expires_at,
         attempt = 0,
         phone_verify = false
