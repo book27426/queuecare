@@ -11,7 +11,7 @@ export async function POST(req) {
 
     if (!ticket || !otp) {
       return NextResponse.json(
-        { "success": false, message: "ticket and otp required" },
+        { success: false, message: "ticket and otp required" },
         { status: 400 }
       );
     }
@@ -31,7 +31,7 @@ export async function POST(req) {
     if (!rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { "success": false, message: "Invalid or expired OTP" },
+        { success: false, message: "Invalid or expired OTP" },
         { status: 400 }
       );
     }
@@ -42,7 +42,7 @@ export async function POST(req) {
     if (otpRow.attempt >= 5) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { "success": false, message: "Too many attempts" },
+        { success: false, message: "Too many attempts" },
         { status: 403 }
       );
     }
@@ -60,7 +60,7 @@ export async function POST(req) {
       await client.query("COMMIT");
 
       return NextResponse.json(
-        { "success": false, message: "Invalid OTP" },
+        { success: false, message: "Invalid OTP" },
         { status: 400 }
       );
     }
@@ -141,7 +141,7 @@ export async function POST(req) {
     } catch {}
 
     return NextResponse.json(
-      { "success": false, message: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   } finally {
@@ -173,13 +173,13 @@ export async function GET(req) {
     );
 
     if (!rows.length)
-      return NextResponse.json({ "success": false, message: "not found" }, { status: 404 });
+      return NextResponse.json({ success: false, message: "not found" }, { status: 404 });
 
-    return NextResponse.json({"success": true, "data":rows[0]});
+    return NextResponse.json({success: true, "data":rows[0]});
 
   } catch {
     return NextResponse.json(
-      { "success": false, message: "Unauthorized" },
+      { success: false, message: "Unauthorized" },
       { status: 401 }
     );
   }
@@ -193,7 +193,7 @@ export async function PUT(req) {
 
     if (!ticket) {
       return NextResponse.json(
-        { "success": false, message: "ticket required" },
+        { success: false, message: "ticket required" },
         { status: 400 }
       );
     }
@@ -201,7 +201,7 @@ export async function PUT(req) {
     const userAuth = await verifyUser(req);
     if (userAuth.error) {
       return NextResponse.json(
-        { "success": false, message: "Unauthorized" },
+        { success: false, message: "Unauthorized" },
         { status: 401 }
       );
     }
@@ -223,7 +223,7 @@ export async function PUT(req) {
     if (!otpResult.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { "success": false, message: "Invalid or expired OTP" },
+        { success: false, message: "Invalid or expired OTP" },
         { status: 400 }
       );
     }
@@ -234,7 +234,7 @@ export async function PUT(req) {
     if (otpRow.attempt >= 5) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { "success": false, message: "Too many attempts" },
+        { success: false, message: "Too many attempts" },
         { status: 403 }
       );
     }
@@ -252,7 +252,7 @@ export async function PUT(req) {
       await client.query("COMMIT");
 
       return NextResponse.json(
-        { "success": false, message: "Invalid OTP" },
+        { success: false, message: "Invalid OTP" },
         { status: 400 }
       );
     }
@@ -268,7 +268,7 @@ export async function PUT(req) {
     if (phoneExists.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { "success": false, message: "Phone already in use" },
+        { success: false, message: "Phone already in use" },
         { status: 400 }
       );
     }
@@ -319,7 +319,7 @@ export async function PUT(req) {
     try { await client.query("ROLLBACK"); } catch {}
 
     return NextResponse.json(
-      { "success": false, message: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   } finally {
@@ -338,5 +338,5 @@ export async function DELETE(req) {
     [token_hash]
   );
 
-  return NextResponse.json({ "success": false, message: "logged out" });
+  return NextResponse.json({ success: false, message: "logged out" });
 }
