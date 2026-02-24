@@ -131,34 +131,58 @@ export async function GET(req) {
     // 👤 USER VIEW
     // ===============================
     const userAuth = await verifyUser(req);
-    if (userAuth.error) return userAuth.error;
 
-    const { user_id } = userAuth;
+    if (!userAuth.error) {
+      const { user_id } = userAuth;
 
-    const { rows } = await db.query(
-      `SELECT id, number, name, phone_num, start_at, end_at, status
-       FROM queue
-       WHERE user_id = $1
-       ORDER BY created_at DESC`,
-      [user_id]
-    );
+      const { rows } = await db.query(
+        `SELECT *
+         FROM queue
+         WHERE user_id = $1
+         ORDER BY created_at DESC`,
+        [user_id]
+      );
 
-    const active = [];
-    const inactive = [];
+      const active = [];
+      const inactive = [];
 
-    for (const q of rows) {
-      if (q.status === "waiting" || q.status === "serving") {
-        active.push(q);
-      } else {
-        inactive.push(q);
+      for (const q of rows) {
+        if (q.status === "waiting" || q.status === "serving") {
+          active.push(q);
+        } else {
+          inactive.push(q);
+        }
       }
+
+      return NextResponse.json({
+        role: "user",
+        active,
+        inactive,
+      });
     }
 
-    return NextResponse.json({
-      role: "user",
-      active,
-      inactive,
-    });
+    // ===============================
+    // 👤 GUEST VIEW (NOT VERIFIED)
+    // ===============================
+    if (tokens.length > 0) {
+      const { rows } = await db.query(
+        `SELECT *
+         FROM queue
+         WHERE token = ANY($1::text[])
+         ORDER BY created_at DESC`,
+        [tokens]
+      );
+
+      return NextResponse.json({
+        role: "guest",
+        data: rows,
+      });
+    }
+
+    return NextResponse.json(
+      { message: "unauthorized" },
+      { status: 401 }
+    );
 
   } catch (err) {
     console.error(err);
