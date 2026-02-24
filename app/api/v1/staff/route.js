@@ -12,7 +12,7 @@ export async function POST(req) {
     first_name = user.first_name
     last_name = user.last_name
     uid = user.uid
-  } catch (err) { return NextResponse.json( { message: "Unauthorized" }, { status: 401 } ); }
+  } catch (err) { return NextResponse.json( { "success": false, message: "Unauthorized" }, { status: 401 } ); }
 
   const client = await db.connect();
 
@@ -89,7 +89,7 @@ export async function POST(req) {
 
     console.error(err);
     return NextResponse.json(
-      { message: "error creating staff" },
+      { "success": false, message: "error creating staff" },
       { status: 500 }
     );
   } finally {
@@ -109,7 +109,7 @@ export async function GET(req) {
 
     if (!id) {
       return NextResponse.json(
-        { message: "id is required" },
+        { "success": false, message: "id is required" },
         { status: 400 }
       );
     }
@@ -122,7 +122,7 @@ export async function GET(req) {
 
   if (!rows.length) {
     return NextResponse.json(
-      { message: "Not found" },
+      { "success": false, message: "Not found" },
       { status: 404 }
     );
   }
@@ -133,7 +133,7 @@ export async function GET(req) {
   );
   } catch {
     return NextResponse.json(
-      { message: "error" },
+      { "success": false, message: "error" },
       { status: 500 }
     );
   }
@@ -152,7 +152,7 @@ export async function PUT(req) {
 
       if(!invite_code){
         return NextResponse.json(
-          { message: "invite_code is required" },
+          { success: false, message: "invite_code is required" },
           { status: 400 }
         );
       }
@@ -171,7 +171,7 @@ export async function PUT(req) {
       if (!rows.length) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "invalid or expired invite code" },
+          { success: false, message: "invalid or expired invite code" },
           { status: 400 }
         );
       }
@@ -190,13 +190,13 @@ export async function PUT(req) {
       if (!result.rowCount) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "staff not found" },
+          { success: false, message: "staff not found" },
           { status: 404 }
         );
       }
       await client.query("COMMIT");
 
-      return NextResponse.json({ success: true,data: result.rows[0]}, { status: 200 });
+      return NextResponse.json({ success: true, data: result.rows[0]}, { status: 200 });
     }
     
     const staff_id = auth.staff_id;
@@ -206,7 +206,7 @@ export async function PUT(req) {
 
     if (!Number.isInteger(id)) {
       return NextResponse.json(
-        { message: "valid id is required" },
+        { success: false, message: "valid id is required" },
         { status: 400 }
       );
     }
@@ -221,14 +221,14 @@ export async function PUT(req) {
       email === undefined
     ) {
       return NextResponse.json(
-        { message: "No fields to update" },
+        { success: false, message: "No fields to update" },
         { status: 400 }
       );
     }
 
     if (staff_id === id) {
       return NextResponse.json(
-        { message: "cannot change your own role" },
+        { success: false, message: "cannot change your own role" },
         { status: 400 }
       );
     }
@@ -240,7 +240,7 @@ export async function PUT(req) {
 
     if (!targetRows.length) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ message: "Not found" }, { status: 404 });
+      return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
     }
 
     const targetRole = targetRows[0].role;
@@ -248,14 +248,14 @@ export async function PUT(req) {
     if (targetRole === "super_admin" && auth.role !== "super_admin") {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "cannot modify super_admin" },
+        { success: false, message: "cannot modify super_admin" },
         { status: 403 }
       );
     }
 
     if (auth.role != "super_admin" && role == "super_admin"){
       return NextResponse.json(
-        { message: "admin can't create super_admin" },
+        { success: false, message: "admin can't create super_admin" },
         { status: 403 }
       );
     }
@@ -278,7 +278,7 @@ export async function PUT(req) {
     if (!result.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Not found" },
+        { success: false, message: "Not found" },
         { status: 404 }
       );
     }
@@ -306,7 +306,7 @@ export async function PUT(req) {
     try {
       await client.query("ROLLBACK");
     } catch {}
-    return NextResponse.json({ message: "error" }, { status: 500 });
+    return NextResponse.json({ success: false, message: "error" }, { status: 500 });
   } finally {
     client.release();
   }
@@ -322,7 +322,7 @@ export async function DELETE(req) {
 
     if (!["admin", "super_admin"].includes(auth.role)) {
       return NextResponse.json(
-        { message: "admin only" },
+        { "success": false, message: "admin only" },
         { status: 403 }
       );
     }
@@ -335,7 +335,7 @@ export async function DELETE(req) {
 
     if (!id || isNaN(id)) {
       return NextResponse.json(
-        { message: "valid id is required" },
+        { "success": false, message: "valid id is required" },
         { status: 400 }
       );
     }
@@ -351,7 +351,7 @@ export async function DELETE(req) {
     if (!rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Not found" },
+        { "success": false, message: "Not found" },
         { status: 404 }
       );
     }
@@ -375,7 +375,7 @@ export async function DELETE(req) {
     try {
       await client.query("ROLLBACK");
     } catch {}
-    return NextResponse.json({ message: "error" }, { status: 500 });
+    return NextResponse.json({ "success": false, message: "error" }, { status: 500 });
   } finally {
     client.release();
   }
