@@ -18,7 +18,6 @@ export async function POST(req) {
 
   try {
     let result;
-    let actionType = "create";
     let statusCode = 201;
     let actionDetail = null;
     
@@ -41,7 +40,6 @@ export async function POST(req) {
         [uid]
       );
 
-      actionType = "update";
       actionDetail = "reactivate";
       statusCode = 200;
       const staff_id = result.rows[0].id;
@@ -49,7 +47,7 @@ export async function POST(req) {
       await client.query(
         `INSERT INTO log (staff_id, action_type, action, target)
         VALUES ($1, $2, $3, $4)`,
-        [staff_id, actionType,actionDetail, "staff"]
+        [staff_id, "update", actionDetail, "staff"]
       );
     }else if (staff && !staff.is_deleted) {
       // Already exists
@@ -67,14 +65,13 @@ export async function POST(req) {
         RETURNING *`,
         [role, first_name, last_name, uid, email]
       );
-      actionType = "create";
       statusCode = 201;
       const staff_id = result.rows[0].id;
 
       await client.query(
         `INSERT INTO log (staff_id, action_type, action, target)
          VALUES ($1, $2, $3, $4)`,
-        [staff_id, actionType,actionDetail, "staff"]
+        [staff_id, "create",actionDetail, "staff"]
       );
     }
 

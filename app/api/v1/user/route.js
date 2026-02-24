@@ -1,44 +1,72 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { verifyStaff, verifyUser } from "@/lib/auth";
 import crypto from "crypto";
 
 export async function POST(req) {
   const client = await db.connect();
 
   try {
-    const { ticket, queue_token } = await req.json();
+    const { ticket, otp ,queue_token } = await req.json();
 
-    if (!ticket) {
+    if (!ticket || !otp) {
       return NextResponse.json(
-        { message: "ticket required" },
+        { message: "ticket and otp required" },
         { status: 400 }
       );
     }
 
     await client.query("BEGIN");
 
-    // Lock OTP row to prevent replay/race condition
-    const otpResult = await client.query(
-      `SELECT id, phone_num
-       FROM phone_otps
-       WHERE ticket = $1
-       AND phone_verify = true
+    const { rows, rowCount } = await client.query(
+      `SELECT *
+       FROM otp_verification
+       WHERE ticket=$1
+       AND phone_verify=false
        AND expires_at > NOW()
        FOR UPDATE`,
       [ticket]
     );
 
-    if (!otpResult.rowCount) {
+    if (!rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Invalid or expired session" },
+        { message: "Invalid or expired OTP" },
         { status: 400 }
       );
     }
 
-    const { id: otp_id, phone_num } = otpResult.rows[0];
+    const otpRow = rows[0];
 
-    // Find or create user
+    // Check attempt limit
+    if (otpRow.attempt >= 5) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "Too many attempts" },
+        { status: 403 }
+      );
+    }
+
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    if (hashedOtp !== otpRow.otp_hash) {
+      await client.query(
+        `UPDATE otp_verification
+         SET attempt = attempt + 1
+         WHERE id=$1`,
+        [otpRow.id]
+      );
+
+      await client.query("COMMIT");
+
+      return NextResponse.json(
+        { message: "Invalid OTP" },
+        { status: 400 }
+      );
+    }
+
+    const phone_num = otpRow.phone_num;
+
     let userResult = await client.query(
       `SELECT id FROM users WHERE phone_num=$1`,
       [phone_num]
@@ -92,7 +120,7 @@ export async function POST(req) {
     }
     // DELETE OTP → single use only
     await client.query(
-      `DELETE FROM phone_otps WHERE id=$1`,
+      `DELETE FROM otp_verify WHERE id=$1`,
       [otp_id]
     );
 
@@ -161,7 +189,7 @@ export async function PUT(req) {
   const client = await db.connect();
 
   try {
-    const { ticket } = await req.json();
+    const { ticket, otp } = await req.json();
 
     if (!ticket) {
       return NextResponse.json(
@@ -182,26 +210,54 @@ export async function PUT(req) {
 
     await client.query("BEGIN");
 
-    // 1️⃣ Lock verified OTP session
-    const otpCheck = await client.query(
-      `SELECT id, phone_num
-       FROM phone_otps
+    const otpResult = await client.query(
+      `SELECT *
+       FROM otp_verification
        WHERE ticket=$1
-       AND phone_verify=true
+       AND phone_verify=false
        AND expires_at > NOW()
        FOR UPDATE`,
       [ticket]
     );
 
-    if (!otpCheck.rowCount) {
+    if (!otpResult.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Phone not verified" },
+        { message: "Invalid or expired OTP" },
         { status: 400 }
       );
     }
 
-    const { id: otp_id, phone_num } = otpCheck.rows[0];
+    const otpRow = otpResult.rows[0];
+
+    // Check attempt limit
+    if (otpRow.attempt >= 5) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "Too many attempts" },
+        { status: 403 }
+      );
+    }
+
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    if (hashedOtp !== otpRow.otp_hash) {
+      await client.query(
+        `UPDATE otp_verification
+         SET attempt = attempt + 1
+         WHERE id=$1`,
+        [otpRow.id]
+      );
+
+      await client.query("COMMIT");
+
+      return NextResponse.json(
+        { message: "Invalid OTP" },
+        { status: 400 }
+      );
+    }
+
+    const phone_num = otpRow.phone_num;
 
     // 2️⃣ Check duplicate phone
     const phoneExists = await client.query(
@@ -248,7 +304,7 @@ export async function PUT(req) {
 
     // 6️⃣ Delete OTP (single use)
     await client.query(
-      `DELETE FROM phone_otps WHERE id=$1`,
+      `DELETE FROM otp_verify WHERE id=$1`,
       [otp_id]
     );
 

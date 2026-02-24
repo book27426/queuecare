@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verifyUser } from "@/lib/auth";
+import { verifyStaff, verifyUser } from "@/lib/auth";
 
 export async function POST(req) {
   const client = await db.connect();
