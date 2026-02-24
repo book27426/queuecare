@@ -123,7 +123,7 @@ export async function GET(req) {
         `SELECT *
          FROM queue
          WHERE section_id = $1
-           AND status = 'waiting' AND 'serving'
+           AND status IN ('waiting', 'serving')
          ORDER BY id ASC`,
         [section_id]
       );
@@ -219,11 +219,163 @@ export async function PUT(req) {
       );
     }
 
-    await client.query("BEGIN");
+    // 1. Verify staff
+    const auth = await verifyStaff(req);
+    if (!auth.error) {
+      await client.query("BEGIN");
+
+      const { staff_id, staff_section_id } = auth;
+      // 2. Get request body
+      const { status, queue_detail, section_id } = await req.json();
+
+      const allowedStatus = ["no_show", "complete", "serving", "transfer"];
+
+      if (!allowedStatus.includes(status)) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { success: false, message: "invalid status" },
+          { status: 400 }
+        );
+      }
+
+      const queueCheck = await client.query(
+        `SELECT id, section_id, status
+        FROM queue
+        WHERE id = $1
+        FOR UPDATE`,
+        [id]
+      );
+
+      if (!queueCheck.rowCount) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { success: false, message: "queue not found" },
+          { status: 404 }
+        );
+      }
+
+      const queue = queueCheck.rows[0];
+
+      // Section permission check
+      if (queue.section_id !== staff_section_id) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { success: false, message: "not allowed" },
+          { status: 403 }
+        );
+      }
+
+      let result;
+      
+      if (status === "no_show") {
+        // 3.1 UPDATE queue no_show
+        result = await client.query(
+          `UPDATE queue
+          SET status='no_show', end_at=NOW()
+          WHERE id=$1 AND status='serving' AND staff_id=$2
+          RETURNING *`,
+          [id, staff_id]
+        );
+      } else if (status === "complete") {
+        // 3.2 UPDATE queue complete
+        result = await client.query(
+          `UPDATE queue
+          SET status='complete', detail=$1, end_at=NOW()
+          WHERE id=$2 AND status='serving' AND staff_id=$3
+          RETURNING *`,
+          [queue_detail, id, staff_id]
+        );
+      } else if (status === "serving") {
+        // 3.3 UPDATE queue serving
+        result = await client.query(
+          `UPDATE queue
+          SET status='serving', start_at=NOW(), staff_id=$2
+          WHERE id=$1 AND status='waiting'
+          RETURNING *`,
+          [id, staff_id]
+        );
+      } else if (status === "transfer") {
+
+        const sectionCheck = await client.query(
+          `SELECT id FROM section
+          WHERE id=$1 AND is_deleted=false`,
+          [section_id]
+        );
+
+        if (!sectionCheck.rowCount) {
+          await client.query("ROLLBACK");
+          return NextResponse.json(
+            { success: false, message: "invalid target section" },
+            { status: 400 }
+          );
+        }
+
+        // 3.4.1 UPDATE queue transfer
+        const updateOld = await client.query(
+          `UPDATE queue
+          SET status='transfer', staff_id=$2, detail=$3, end_at = NOW()
+          WHERE id=$1 AND status='serving' AND staff_id=$2
+          RETURNING *`,
+          [id, staff_id, queue_detail]
+        );
+
+        if (!updateOld.rowCount) {
+          await client.query("ROLLBACK");
+          return NextResponse.json(
+            { success: false, message: "queue not found or invalid state" },
+            { status: 400 }
+          );
+        }
+
+        const oldQueue = updateOld.rows[0];
+        // 3.4.2 INSERT queue
+        result = await client.query(
+          `INSERT INTO queue (number, detail, queue_date, user_id, section_id, status, token)
+          VALUES ($1,$2,$3,$4,$5,'waiting',$6)
+          RETURNING *`,
+          [
+            oldQueue.number,
+            oldQueue.detail,
+            oldQueue.queue_date,
+            oldQueue.user_id,
+            section_id,
+            oldQueue.token
+          ]
+        );
+      } else {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { success: false, message: "invalid status" },
+          { status: 400 }
+        );
+      }
+
+      if (!result.rowCount) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { success: false, message: "queue not found or invalid state" },
+          { status: 400 }
+        );
+      }
+
+      // 4. Insert log
+      const detail = `update queue ${id} to ${status}`;
+
+      await client.query(
+        `INSERT INTO log (staff_id, action_type, action, target)
+        VALUES ($1, $2, $3, $4)`,
+        [staff_id, "update", detail, "queue"]
+      );
+
+      await client.query("COMMIT");
+      return NextResponse.json({ success: true, role: "staff", data: result.rows[0]}, { status: 200 });
+    }
     // 1. Verify User
     const userAuth = await verifyUser(req);
 
     if (!userAuth.error) {
+      await client.query("BEGIN");
+
       const { user_id } = userAuth;
 
       const result = await client.query(
@@ -239,7 +391,7 @@ export async function PUT(req) {
       if (!result.rowCount) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { success: false, message: "queue not found or cannot cancel" },
+          { success: false, message: "cannot cancel" },
           { status: 400 }
         );
       }
@@ -252,165 +404,26 @@ export async function PUT(req) {
         data: result.rows[0]
       });
     }
-    // 1. Verify staff
-    const auth = await verifyStaff(req);
-    if (auth.error) {
-      await client.query("ROLLBACK");
-      return auth.error;
-    }
 
-    const { staff_id, staff_section_id } = auth;
+    const body = await req.json();
+    const token = body?.token;
 
-    // 2. Get request body
-    const { status, queue_detail, section_id } = await req.json();
-
-    const allowedStatus = [
-      "no_show",
-      "complete",
-      "serving",
-      "transfer"
-    ];
-
-    if (!allowedStatus.includes(status)) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "invalid status" },
-        { status: 400 }
-      );
-    }
-
-    const queueCheck = await client.query(
-      `SELECT id, section_id, status
-      FROM queue
-      WHERE id = $1
-      FOR UPDATE`,
-      [id]
-    );
-
-    if (!queueCheck.rowCount) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "queue not found" },
-        { status: 404 }
-      );
-    }
-
-    const queue = queueCheck.rows[0];
-
-    // Section permission check
-    if (queue.section_id !== staff_section_id) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "not allowed to modify this queue" },
-        { status: 403 }
-      );
-    }
-
-    let result;
-    
-    if (status === "no_show") {
-      // 3.1 UPDATE queue no_show
-      result = await client.query(
-        `UPDATE queue
-         SET status='no_show', end_at=NOW()
-         WHERE id=$1 AND status='serving' AND staff_id=$2
+    if (typeof token === "string") {
+      const result = await client.query(
+        `UPDATE queue SET status='cancel', end_at=NOW()
+         WHERE id=$1 AND token=$2 AND status='waiting'
          RETURNING *`,
-        [id, staff_id]
-      );
-    } else if (status === "complete") {
-      // 3.2 UPDATE queue complete
-      result = await client.query(
-        `UPDATE queue
-         SET status='complete', detail=$1, end_at=NOW()
-         WHERE id=$2 AND status='serving' AND staff_id=$3
-         RETURNING *`,
-        [queue_detail, id, staff_id]
-      );
-    } else if (status === "serving") {
-      // 3.3 UPDATE queue serving
-      result = await client.query(
-        `UPDATE queue
-         SET status='serving', start_at=NOW(), staff_id=$2
-         WHERE id=$1 AND status='waiting'
-         RETURNING *`,
-        [id, staff_id]
-      );
-    } else if (status === "transfer") {
-
-      const sectionCheck = await client.query(
-        `SELECT id FROM section
-        WHERE id=$1 AND is_deleted=false`,
-        [section_id]
+        [id, token]
       );
 
-      if (!sectionCheck.rowCount) {
-        await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "invalid target section" },
-          { status: 400 }
-        );
+      if (result.rowCount) {
+        await client.query("COMMIT");
+        return NextResponse.json({ success: true, role: "guest", data: result.rows[0] });
       }
-
-      // 3.4.1 UPDATE queue transfer
-      const updateOld = await client.query(
-        `UPDATE queue
-         SET status='transfer', staff_id=$2, detail=$3
-         WHERE id=$1 AND status='serving' AND staff_id=$4
-         RETURNING *`,
-        [id, staff_id, queue_detail, staff_id]
-      );
-
-      if (!updateOld.rowCount) {
-        await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "queue not found or invalid state" },
-          { status: 400 }
-        );
-      }
-
-      const oldQueue = updateOld.rows[0];
-      // 3.4.2 INSERT queue
-      result = await client.query(
-        `INSERT INTO queue (number, detail, queue_date, user_id, section_id, status, token)
-         VALUES ($1,$2,$3,$4,$5,'waiting',$6)
-         RETURNING *`,
-        [
-          oldQueue.number,
-          oldQueue.detail,
-          oldQueue.queue_date,
-          oldQueue.user_id,
-          section_id,
-          oldQueue.token
-        ]
-      );
-    } else {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "invalid status" },
-        { status: 400 }
-      );
     }
 
-    if (!result.rowCount) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "queue not found or invalid state" },
-        { status: 400 }
-      );
-    }
-
-    // 4. Insert log
-    const detail = `update queue ${id} to ${status}`;
-
-    await client.query(
-      `INSERT INTO log (staff_id, action_type, action, target)
-       VALUES ($1, $2, $3, $4)`,
-      [staff_id, "update", detail, "queue"]
-    );
-
-    await client.query("COMMIT");
-
-    return NextResponse.json({ success: true, data: result.rows[0]}, { status: 200 });
+    await client.query("ROLLBACK");
+    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
 
   } catch (err) {
     console.error("Update queue error:", err);
