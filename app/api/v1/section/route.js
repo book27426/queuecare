@@ -119,7 +119,7 @@ export async function GET(req) {
 
       const { rows } = await db.query(
         `
-        SELECT id, name, default_wait_time, predict_time
+        SELECT id, name, default_wait, predict_time
         FROM section
         WHERE name ILIKE '%' || $1 || '%'
         AND is_deleted = false
