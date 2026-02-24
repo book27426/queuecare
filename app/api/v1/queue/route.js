@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyStaff, verifyUser } from "@/lib/auth";
+import crypto from "crypto";
 
 export async function POST(req) {
   const client = await db.connect();
@@ -64,7 +65,7 @@ export async function POST(req) {
     let token = null;
 
     if (user_id === null) {
-      token = randomUUID();
+      token = crypto.randomUUID();
     }
     
     // 5. Insert section

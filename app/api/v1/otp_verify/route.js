@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import crypto from "crypto";
 
 export async function POST(req) {
   const client = await db.connect();
@@ -7,12 +8,14 @@ export async function POST(req) {
   try {
     const { phone_num } = await req.json();
 
-    if (!phone_num) {
+    if (!phone_num || phone_num.trim() === "") {
       return NextResponse.json(
         { message: "phone number required" },
         { status: 400 }
       );
     }
+
+    const normalizedPhone = phone_num.trim();
 
     ///check  num is have in db
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -22,40 +25,28 @@ export async function POST(req) {
 
     await client.query("BEGIN");
 
-    const existing = await client.query(
-      `SELECT id
-       FROM otp_verification
-       WHERE phone_num = $1`,
-      [phone_num]
+    await client.query(
+      `
+      INSERT INTO otp_verification
+      (phone_num, ticket, otp_hash, expires_at, attempt, phone_verify)
+      VALUES ($1, $2, $3, $4, 0, false)
+      ON CONFLICT (phone_num)
+      DO UPDATE SET
+        ticket = EXCLUDED.ticket,
+        otp_hash = EXCLUDED.otp_hash,
+        expires_at = EXCLUDED.expires_at,
+        attempt = 0,
+        phone_verify = false
+      `,
+      [normalizedPhone, ticket, hashedOtp, expiresAt]
     );
-
-    if (existing.rowCount > 0) {
-      // 🔄 Rebuild existing OTP
-      await client.query(
-        `UPDATE otp_verification
-         SET ticket = $1,
-             otp_hash = $2,
-             expires_at = $3,
-             attempt = 0
-         WHERE id = $4`,
-        [ticket, hashedOtp, expiresAt, existing.rows[0].id]
-      );
-    } else {
-      // ➕ Create new OTP row
-      await client.query(
-        `INSERT INTO otp_verification
-         (phone_num, ticket, otp_hash, expires_at, attempt, phone_verify)
-         VALUES ($1, $2, $3, $4, 0, false)`,
-        [phone_num, ticket, hashedOtp, expiresAt]
-      );
-    }
 
     await client.query("COMMIT");
 
     console.log("OTP:", otp);
 
     return NextResponse.json(
-      { success: true, ticket },
+      { success: true, data:{ticket} },
       { status: 200 }
     );
 

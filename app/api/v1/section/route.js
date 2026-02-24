@@ -32,7 +32,7 @@ export async function POST(req) {
     }
 
     const wait = Number(wait_default ?? 5);
-    const parent = parent_id ? Number(parent_id) : null;
+    const parent = parent_id ? Number(parent_id) : 0;
 
     if (
       isNaN(wait) || wait < 0 ||
@@ -334,8 +334,6 @@ export async function PUT(req) {
     if (auth.error) return auth.error;
 
     const staff_id = auth.staff_id;
-
-    // Optional: restrict structure changes to admin only
     const isAdmin = auth.role === "admin";
 
     // 2️⃣ Get section id
@@ -367,9 +365,9 @@ export async function PUT(req) {
     await client.query("BEGIN");
 
     // ===============================
-    // WAIT DEFAULT UPDATE (allowed to staff)
+    // WAIT UPDATE (staff allowed)
     // ===============================
-    let waitValue = null;
+    let waitValue = undefined;
 
     if (wait_default !== undefined) {
       waitValue = Number(wait_default);
@@ -390,6 +388,7 @@ export async function PUT(req) {
     let depth = undefined;
 
     if (name !== undefined || parent_id !== undefined) {
+
       if (!isAdmin) {
         await client.query("ROLLBACK");
         return NextResponse.json(
@@ -398,10 +397,10 @@ export async function PUT(req) {
         );
       }
 
-      if (!name || name.trim() === "") {
+      if (name !== undefined && name.trim() === "") {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "Name is required" },
+          { message: "Name cannot be empty" },
           { status: 400 }
         );
       }
@@ -457,9 +456,11 @@ export async function PUT(req) {
 
       // Calculate depth
       depth = 0;
+
       if (parent !== null) {
         const parentRow = await client.query(
-          `SELECT depth_int FROM section
+          `SELECT depth_int
+           FROM section
            WHERE id=$1 AND is_deleted=false`,
           [parent]
         );
@@ -473,6 +474,15 @@ export async function PUT(req) {
         }
 
         depth = parentRow.rows[0].depth_int + 1;
+      }
+
+      // 🔥 Depth limit protection
+      if (depth > 5) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { message: "Maximum depth exceeded (max 5)" },
+          { status: 400 }
+        );
       }
     }
 
@@ -495,11 +505,19 @@ export async function PUT(req) {
       values.push(depth);
     }
 
-    if (waitValue !== null) {
+    if (waitValue !== undefined) {
       fields.push(`wait_default=$${index++}`);
       values.push(waitValue);
       fields.push(`predict_time=$${index++}`);
       values.push(waitValue);
+    }
+
+    if (fields.length === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { message: "Nothing to update" },
+        { status: 400 }
+      );
     }
 
     values.push(sectionId);
@@ -521,7 +539,7 @@ export async function PUT(req) {
       );
     }
 
-    // Recalculate subtree depth if structure changed
+    // Recalculate subtree depth
     if (parent !== undefined) {
       await client.query(
         `
@@ -549,12 +567,10 @@ export async function PUT(req) {
     }
 
     // Log
-    const detail = `Updated section ${sectionId}`;
-
     await client.query(
       `INSERT INTO log (staff_id, action_type, action, target)
        VALUES ($1, $2, $3, $4)`,
-      [staff_id, "update", detail, "section"]
+      [staff_id, "update", `Updated section ${sectionId}`, "section"]
     );
 
     await client.query("COMMIT");
@@ -575,6 +591,7 @@ export async function PUT(req) {
     client.release();
   }
 }
+
 export async function DELETE(req) {
   const client = await db.connect();
 
