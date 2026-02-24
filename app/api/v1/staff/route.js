@@ -300,7 +300,7 @@ export async function PUT(req) {
     );
 
     await client.query("COMMIT");
-    return NextResponse.json({ success: true,data: result.rows[0]}, { status: 200 });
+    return NextResponse.json({ success: true, data: result.rows[0]}, { status: 200 });
   } catch (err) {
     console.error("Update staff error:", err);
     try {
@@ -366,7 +366,10 @@ export async function DELETE(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ message: "deleted" });
+    return NextResponse.json({
+      success: true,
+      message: "deleted" 
+    });
   } catch (err) {
     console.error("DELETE staff error:", err);
     try {

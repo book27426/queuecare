@@ -90,7 +90,7 @@ export async function POST(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true,data: section.rows[0]}, { status: 201 });
+    return NextResponse.json({ success: true, data: section.rows[0]}, { status: 201 });
 
   } catch (err) {
     try {
@@ -128,6 +128,7 @@ export async function GET(req) {
       );
 
       return NextResponse.json({
+        success: true,
         mode: "public-search",
         data: rows
       });
@@ -274,6 +275,7 @@ export async function GET(req) {
       };
 
       return NextResponse.json({
+        success: true,
         mode: "main-section",
         section : section,
         stats: stats,
@@ -302,6 +304,7 @@ export async function GET(req) {
       );
 
       return NextResponse.json({
+        success: true,
         mode: "sub-section-staff",
         parent_section: section,
         own_section: ownSection[0]
@@ -642,7 +645,10 @@ export async function DELETE(req) {
     );
 
     await client.query("COMMIT");
-    return NextResponse.json({ message: "deleted" });
+    return NextResponse.json({ 
+      success: true,
+      message: "deleted" 
+    });
   } catch {
     console.error("DELETE section error:", err);
     try {

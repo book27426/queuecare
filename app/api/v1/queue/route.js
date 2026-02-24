@@ -88,7 +88,7 @@ export async function POST(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true,data: queueInsert.rows[0]}, { status: 201 });
+    return NextResponse.json({ success: true, data: queueInsert.rows[0]}, { status: 201 });
   } catch (err) {
     try {
       await client.query("ROLLBACK");
@@ -129,6 +129,7 @@ export async function GET(req) {
       );
 
       return NextResponse.json({
+        success: true,
         role: "staff",
         data: rows,
       });
@@ -162,9 +163,12 @@ export async function GET(req) {
       }
 
       return NextResponse.json({
+        success: true,
         role: "user",
-        active,
-        inactive,
+        data:{
+          active,
+          inactive
+        }
       });
     }
 
@@ -181,6 +185,7 @@ export async function GET(req) {
       );
 
       return NextResponse.json({
+        success: true,
         role: "guest",
         data: rows,
       });
@@ -242,8 +247,8 @@ export async function PUT(req) {
       await client.query("COMMIT");
 
       return NextResponse.json({
-        role: "user",
         success: true,
+        role: "user",
         data: result.rows[0]
       });
     }
@@ -405,7 +410,7 @@ export async function PUT(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true,data: result.rows[0]}, { status: 200 });
+    return NextResponse.json({ success: true, data: result.rows[0]}, { status: 200 });
 
   } catch (err) {
     console.error("Update queue error:", err);
