@@ -10,7 +10,7 @@ export async function POST(req) {
 
     if (!phone_num || phone_num.trim() === "") {
       return NextResponse.json(
-        { message: "phone number required" },
+        { success: false, message: "phone number required" },
         { status: 400 }
       );
     }
@@ -53,7 +53,7 @@ export async function POST(req) {
   } catch (err) {
     await client.query("ROLLBACK");
     return NextResponse.json(
-      { message: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   } finally {

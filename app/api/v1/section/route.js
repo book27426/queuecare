@@ -11,7 +11,7 @@ export async function POST(req) {
     
     if (auth.role !== "admin") {
       return NextResponse.json(
-        { message: "Forbidden - admin only" },
+        { success: false, message: "Forbidden - admin only" },
         { status: 403 }
       );
     }
@@ -26,7 +26,7 @@ export async function POST(req) {
 
     if (!name) {
       return NextResponse.json(
-        { message: "name is required" },
+        { success: false, message: "name is required" },
         { status: 400 }
       );
     }
@@ -38,7 +38,7 @@ export async function POST(req) {
       isNaN(wait) || wait < 0 ||
       isNaN(depth) || depth < 0) {
       return NextResponse.json(
-        { message: "invalid numeric values" },
+        { success: false, message: "invalid numeric values" },
         { status: 400 }
       );
     }
@@ -56,7 +56,7 @@ export async function POST(req) {
       if (!parentCheck.rowCount) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "parent section not found" },
+          { success: false, message: "parent section not found" },
           { status: 400 }
         );
       }
@@ -67,7 +67,7 @@ export async function POST(req) {
     if (depth > 5) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "maximum depth exceeded" },
+        { success: false, message: "maximum depth exceeded" },
         { status: 400 }
       );
     }
@@ -99,7 +99,7 @@ export async function POST(req) {
 
     console.error(err);
     return NextResponse.json(
-      { message: "internal server error" },
+      { success: false, message: "internal server error" },
       { status: 500 }
     );
   } finally {
@@ -142,7 +142,7 @@ export async function GET(req) {
 
     if (!id) {
       return NextResponse.json(
-        { message: "id is required" },
+        { success: false, message: "id is required" },
         { status: 400 }
       );
     }
@@ -151,7 +151,7 @@ export async function GET(req) {
 
     if (!Number.isInteger(sectionId) || sectionId <= 0) {
       return NextResponse.json(
-        { message: "valid id is required" },
+        { success: false, message: "valid id is required" },
         { status: 400 }
       );
     }
@@ -165,7 +165,7 @@ export async function GET(req) {
 
     if (!sectionRows.length) {
       return NextResponse.json(
-        { message: "Not found" },
+        { success: false, message: "Not found" },
         { status: 404 }
       );
     }
@@ -312,14 +312,14 @@ export async function GET(req) {
     }
 
     return NextResponse.json(
-      { message: "Unauthorized" },
+      { success: false, message: "Unauthorized" },
       { status: 403 }
     );
 
   } catch (err) {
     console.error("Get section error:", err);
     return NextResponse.json(
-      { message: "Internal server error" },
+      { success: false, message: "Internal server error" },
       { status: 500 }
     );
   }
@@ -343,7 +343,7 @@ export async function PUT(req) {
 
     if (!idParam || Number.isNaN(sectionId)) {
       return NextResponse.json(
-        { message: "Valid id is required" },
+        { success: false, message: "Valid id is required" },
         { status: 400 }
       );
     }
@@ -357,7 +357,7 @@ export async function PUT(req) {
       wait_default === undefined
     ) {
       return NextResponse.json(
-        { message: "At least one field must be provided" },
+        { success: false, message: "At least one field must be provided" },
         { status: 400 }
       );
     }
@@ -375,7 +375,7 @@ export async function PUT(req) {
       if (Number.isNaN(waitValue) || waitValue < 0) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "Invalid wait_default value" },
+          { success: false, message: "Invalid wait_default value" },
           { status: 400 }
         );
       }
@@ -392,7 +392,7 @@ export async function PUT(req) {
       if (!isAdmin) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "Forbidden - admin only for structure change" },
+          { success: false, message: "Forbidden - admin only for structure change" },
           { status: 403 }
         );
       }
@@ -400,7 +400,7 @@ export async function PUT(req) {
       if (name !== undefined && name.trim() === "") {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "Name cannot be empty" },
+          { success: false, message: "Name cannot be empty" },
           { status: 400 }
         );
       }
@@ -413,7 +413,7 @@ export async function PUT(req) {
       if (parent !== null && Number.isNaN(parent)) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "Invalid parent_id" },
+          { success: false, message: "Invalid parent_id" },
           { status: 400 }
         );
       }
@@ -422,7 +422,7 @@ export async function PUT(req) {
       if (parent === sectionId) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "Section cannot be its own parent" },
+          { success: false, message: "Section cannot be its own parent" },
           { status: 400 }
         );
       }
@@ -448,7 +448,7 @@ export async function PUT(req) {
         if (cycleCheck.rowCount > 0) {
           await client.query("ROLLBACK");
           return NextResponse.json(
-            { message: "Circular reference detected" },
+            { success: false, message: "Circular reference detected" },
             { status: 400 }
           );
         }
@@ -468,7 +468,7 @@ export async function PUT(req) {
         if (!parentRow.rowCount) {
           await client.query("ROLLBACK");
           return NextResponse.json(
-            { message: "Parent section not found" },
+            { success: false, message: "Parent section not found" },
             { status: 400 }
           );
         }
@@ -480,7 +480,7 @@ export async function PUT(req) {
       if (depth > 5) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "Maximum depth exceeded (max 5)" },
+          { success: false, message: "Maximum depth exceeded (max 5)" },
           { status: 400 }
         );
       }
@@ -515,7 +515,7 @@ export async function PUT(req) {
     if (fields.length === 0) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Nothing to update" },
+        { success: false, message: "Nothing to update" },
         { status: 400 }
       );
     }
@@ -534,7 +534,7 @@ export async function PUT(req) {
     if (!result.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Section not found" },
+        { success: false, message: "Section not found" },
         { status: 404 }
       );
     }
@@ -584,7 +584,7 @@ export async function PUT(req) {
     console.error("Update section error:", err);
     try { await client.query("ROLLBACK"); } catch {}
     return NextResponse.json(
-      { message: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   } finally {
@@ -602,7 +602,7 @@ export async function DELETE(req) {
     
     if (auth.role !== "admin") {
       return NextResponse.json(
-        { message: "Forbidden - admin only" },
+        { success: false, message: "Forbidden - admin only" },
         { status: 403 }
       );
     }
@@ -615,7 +615,7 @@ export async function DELETE(req) {
 
     if (!id || isNaN(id)) {
       return NextResponse.json(
-        { message: "valid id is required" },
+        { success: false, message: "valid id is required" },
         { status: 400 }
       );
     }
@@ -631,7 +631,7 @@ export async function DELETE(req) {
     if (!rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Not found" },
+        { success: false, message: "Not found" },
         { status: 404 }
       );
     }
@@ -654,7 +654,7 @@ export async function DELETE(req) {
     try {
       await client.query("ROLLBACK");
     } catch {}
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    return NextResponse.json({ success: false, message: "Error" }, { status: 500 });
   } finally {
     client.release();
   }

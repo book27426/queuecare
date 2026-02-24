@@ -13,7 +13,7 @@ export async function POST(req) {
 
     if (auth.role !== "admin") {
       return NextResponse.json(
-        { message: "Admin only" },
+        { success: false, message: "Admin only" },
         { status: 403 }
       );
     }
@@ -25,7 +25,7 @@ export async function POST(req) {
 
     if (!sectionId) {
       return NextResponse.json(
-        { message: "section_id is required" },
+        { success: false, message: "section_id is required" },
         { status: 400 }
       );
     }
@@ -36,7 +36,7 @@ export async function POST(req) {
 
     if (expire_minutes <= 0) {
       return NextResponse.json(
-        { message: "expire_minutes must be positive" },
+        { success: false, essage: "expire_minutes must be positive" },
         { status: 400 }
       );
     }
@@ -61,7 +61,7 @@ export async function POST(req) {
     if (!result.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "Section not found" },
+        { success: false, message: "Section not found" },
         { status: 404 }
       );
     }
@@ -74,7 +74,7 @@ export async function POST(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true,data: {invite_code:inviteCode}}, { status: 201 });
+    return NextResponse.json({ success: true, data: {invite_code:inviteCode}}, { status: 201 });
 
   } catch (err) {
     try {
@@ -83,7 +83,7 @@ export async function POST(req) {
 
     console.error(err);
     return NextResponse.json(
-      { message: "internal server error" },
+      { success: false, message: "internal server error" },
       { status: 500 }
     );
   } finally {

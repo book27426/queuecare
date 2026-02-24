@@ -22,7 +22,7 @@ export async function POST(req) {
       !phone_num
     ) {
       return NextResponse.json(
-        { message: "invalid body" },
+        { success: false, message: "invalid body" },
         { status: 400 }
       );
     }
@@ -39,7 +39,7 @@ export async function POST(req) {
     if (!sectionCheck.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "section not found" },
+        { success: false, message: "section not found" },
         { status: 404 }
       );
     }
@@ -96,7 +96,7 @@ export async function POST(req) {
 
     console.error(err);
     return NextResponse.json(
-      { message: "internal server error" },
+      { success: false, message: "internal server error" },
       { status: 500 }
     );
   } finally {
@@ -192,14 +192,14 @@ export async function GET(req) {
     }
 
     return NextResponse.json(
-      { message: "unauthorized" },
+      { success: false, message: "unauthorized" },
       { status: 401 }
     );
 
   } catch (err) {
     console.error(err);
     return NextResponse.json(
-      { message: "internal server error" },
+      { success: false, message: "internal server error" },
       { status: 500 }
     );
   }
@@ -214,7 +214,7 @@ export async function PUT(req) {
 
     if (!Number.isInteger(id) || id <= 0) {
       return NextResponse.json(
-        { message: "valid id is required" },
+        { success: false, message: "valid id is required" },
         { status: 400 }
       );
     }
@@ -239,7 +239,7 @@ export async function PUT(req) {
       if (!result.rowCount) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "queue not found or cannot cancel" },
+          { success: false, message: "queue not found or cannot cancel" },
           { status: 400 }
         );
       }
@@ -274,7 +274,7 @@ export async function PUT(req) {
     if (!allowedStatus.includes(status)) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "invalid status" },
+        { success: false, message: "invalid status" },
         { status: 400 }
       );
     }
@@ -290,7 +290,7 @@ export async function PUT(req) {
     if (!queueCheck.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "queue not found" },
+        { success: false, message: "queue not found" },
         { status: 404 }
       );
     }
@@ -301,7 +301,7 @@ export async function PUT(req) {
     if (queue.section_id !== staff_section_id) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "not allowed to modify this queue" },
+        { success: false, message: "not allowed to modify this queue" },
         { status: 403 }
       );
     }
@@ -346,7 +346,7 @@ export async function PUT(req) {
       if (!sectionCheck.rowCount) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "invalid target section" },
+          { success: false, message: "invalid target section" },
           { status: 400 }
         );
       }
@@ -363,7 +363,7 @@ export async function PUT(req) {
       if (!updateOld.rowCount) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { message: "queue not found or invalid state" },
+          { success: false, message: "queue not found or invalid state" },
           { status: 400 }
         );
       }
@@ -386,7 +386,7 @@ export async function PUT(req) {
     } else {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "invalid status" },
+        { success: false, message: "invalid status" },
         { status: 400 }
       );
     }
@@ -394,7 +394,7 @@ export async function PUT(req) {
     if (!result.rowCount) {
       await client.query("ROLLBACK");
       return NextResponse.json(
-        { message: "queue not found or invalid state" },
+        { success: false, message: "queue not found or invalid state" },
         { status: 400 }
       );
     }
@@ -420,7 +420,7 @@ export async function PUT(req) {
     } catch {}
 
     return NextResponse.json(
-      { message: "internal server error" },
+      { success: false, message: "internal server error" },
       { status: 500 }
     );
   } finally {
