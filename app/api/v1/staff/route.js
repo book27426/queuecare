@@ -6,14 +6,19 @@ export async function POST(req) {
   let email, first_name, last_name, uid;
   const role = "staff";
 
-  try {
-    const user = await verifyFirebaseToken(req);
-    email = user.email
-    first_name = user.first_name
-    last_name = user.last_name
-    uid = user.uid
-  } catch (err) { return NextResponse.json( { "success": false, message: "Unauthorized" }, { status: 401 } ); }
+  // try {
+  //   const user = await verifyFirebaseToken(req);
+  //   email = user.email
+  //   first_name = user.first_name
+  //   last_name = user.last_name
+  //   uid = user.uid
+  // } catch (err) { return NextResponse.json( { "success": false, message: "Unauthorized" }, { status: 401 } ); }
 
+  const user = await verifyFirebaseToken(req);
+  email = user.email
+  first_name = user.first_name
+  last_name = user.last_name
+  uid = user.uid
   const client = await db.connect();
 
   try {
