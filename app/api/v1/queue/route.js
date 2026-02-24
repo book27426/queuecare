@@ -105,6 +105,12 @@ export async function POST(req) {
 
 export async function GET(req) {
   try {
+    const { searchParams } = new URL(req.url);
+    const tokenParam = searchParams.get("tokens");
+
+    const tokens = tokenParam
+      ? tokenParam.split(",").map(t => t.trim()).filter(Boolean)
+      : [];
 
     const staffAuth = await verifyStaff(req);
 
@@ -116,14 +122,14 @@ export async function GET(req) {
         `SELECT *
          FROM queue
          WHERE section_id = $1
-           AND status = 'waiting'
+           AND status = 'waiting' AND 'serving'
          ORDER BY id ASC`,
         [section_id]
       );
 
       return NextResponse.json({
         role: "staff",
-        data: rows,///มันจะหนักไปไหม
+        data: rows,
       });
     }
 
