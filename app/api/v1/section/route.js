@@ -124,7 +124,7 @@ export async function GET(req) {
         WHERE name ILIKE '%' || $1 || '%'
         AND is_deleted = false
         `,
-        [name]
+        [name]///depth_int=0
       );
 
       return NextResponse.json({
