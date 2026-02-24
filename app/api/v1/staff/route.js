@@ -3,29 +3,36 @@ import { db } from "@/lib/db";
 import { verifyStaff, verifyFirebaseToken } from "@/lib/auth";
 
 export async function POST(req) {
-  let email, first_name, last_name, uid;
+  const authHeader = req.headers.get("authorization");
+
+  if (!authHeader?.startsWith("Bearer ")) {
+    return NextResponse.json(
+      { success: false, message: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  const idToken = authHeader.split("Bearer ")[1];
+
+  let decoded;
+
+  try {
+    decoded = await admin.auth().verifyIdToken(idToken);
+  } catch (err) {
+    return NextResponse.json(
+      { success: false, message: "Invalid token" },
+      { status: 401 }
+    );
+  }
+
+  const { uid, email, name } = decoded;
+  const [first_name, ...rest] = (name || "").split(" ");
+  const last_name = rest.join(" ");
   const role = "staff";
 
-  // try {
-  //   const user = await verifyFirebaseToken(req);
-  //   email = user.email
-  //   first_name = user.first_name
-  //   last_name = user.last_name
-  //   uid = user.uid
-  // } catch (err) { return NextResponse.json( { "success": false, message: "Unauthorized" }, { status: 401 } ); }
-
-  const user = await verifyFirebaseToken(req);
-  email = user.email
-  first_name = user.first_name
-  last_name = user.last_name
-  uid = user.uid
   const client = await db.connect();
 
   try {
-    let result;
-    let statusCode = 201;
-    let actionDetail = null;
-    
     await client.query("BEGIN");
 
     const existing = await client.query(
@@ -33,68 +40,68 @@ export async function POST(req) {
       [uid]
     );
 
-    const staff = existing.rows[0];
+    let result;
+    let statusCode = 200;
 
-    if (staff && staff.is_deleted) {
-      // Exists & is_deleted
-      result = await client.query(
-        `UPDATE staff
-        SET is_deleted = false
-        WHERE uid=$1
-        RETURNING *`,
-        [uid]
-      );
+    if (existing.rows.length > 0) {
+      const staff = existing.rows[0];
 
-      actionDetail = "reactivate";
-      statusCode = 200;
-      const staff_id = result.rows[0].id;
+      if (staff.is_deleted) {
+        result = await client.query(
+          `UPDATE staff
+           SET is_deleted=false
+           WHERE uid=$1
+           RETURNING *`,
+          [uid]
+        );
+      } else {
+        result = await client.query(
+          `SELECT * FROM staff WHERE uid=$1`,
+          [uid]
+        );
+      }
 
-      await client.query(
-        `INSERT INTO log (staff_id, action_type, action, target)
-        VALUES ($1, $2, $3, $4)`,
-        [staff_id, "update", actionDetail, "staff"]
-      );
-    }else if (staff && !staff.is_deleted) {
-      // Already exists
-      result = await client.query(
-        `SELECT * FROM staff WHERE uid=$1`,
-        [uid]
-      );
-      statusCode = 200;
-
-    } else{
-      // 3. Insert section
+    } else {
       result = await client.query(
         `INSERT INTO staff (role, first_name, last_name, uid, email)
-        VALUES ($1,$2,$3,$4,$5)
-        RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5)
+         RETURNING *`,
         [role, first_name, last_name, uid, email]
       );
-      statusCode = 201;
-      const staff_id = result.rows[0].id;
 
-      await client.query(
-        `INSERT INTO log (staff_id, action_type, action, target)
-         VALUES ($1, $2, $3, $4)`,
-        [staff_id, "create",actionDetail, "staff"]
-      );
+      statusCode = 201;
     }
 
     await client.query("COMMIT");
 
-    return NextResponse.json(
+    // 🔥 Create Session Cookie (NEW PART)
+    const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
+
+    const sessionCookie = await admin
+      .auth()
+      .createSessionCookie(idToken, { expiresIn });
+
+    const response = NextResponse.json(
       { success: true, data: result.rows[0] },
       { status: statusCode }
     );
 
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
+    response.cookies.set("session", sessionCookie, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: expiresIn / 1000,
+      path: "/",
+    });
 
+    return response;
+
+  } catch (err) {
+    await client.query("ROLLBACK");
     console.error(err);
+
     return NextResponse.json(
-      { "success": false, message: "error creating staff" },
+      { success: false, message: "error creating staff" },
       { status: 500 }
     );
   } finally {
