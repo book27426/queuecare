@@ -116,9 +116,6 @@ export async function GET(req) {
 
     /// 2.check User search
     if (name) {
-      /// 2.1  Verify User
-      const userAuth = await verifyUser(req);
-      if (userAuth.error) return userAuth.error;
 
       const { rows } = await db.query(
         `
