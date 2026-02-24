@@ -105,15 +105,10 @@ export async function POST(req) {
 
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const tokenParam = searchParams.get("tokens");
 
-    const tokens = tokenParam
-      ? tokenParam.split(",").filter(Boolean)
-      : [];
-    // 🧑‍💼 STAFF VIEW
     const staffAuth = await verifyStaff(req);
 
+    // 🧑‍💼 STAFF VIEW
     if (!staffAuth.error) {
       const { section_id } = staffAuth;
 
@@ -136,67 +131,34 @@ export async function GET(req) {
     // 👤 USER VIEW
     // ===============================
     const userAuth = await verifyUser(req);
+    if (userAuth.error) return userAuth.error;
 
-    if (!userAuth.error) {
-      const { user_id } = userAuth;
+    const { user_id } = userAuth;
 
-      const { rows } = await db.query(
-        `SELECT *
-         FROM queue
-         WHERE user_id = $1
-         ORDER BY created_at DESC`,
-        [user_id]
-      );
-
-      const active = [];
-      const inactive = [];
-
-      for (const q of rows) {
-        if (q.status === "waiting" || q.status === "serving") {
-          active.push(q);
-        } else {
-          inactive.push(q);
-        }
-      }
-
-      return NextResponse.json({
-        role: "user",
-        active,
-        inactive,
-      });
-    }
-
-    if (tokens.length > 0) {
-      const { rows } = await db.query(
-        `SELECT *
-         FROM queue
-         WHERE token = ANY($1::text[])
-         ORDER BY created_at DESC`,
-        [tokens]
-      );
-
-      const active = [];
-      const inactive = [];
-
-      for (const q of rows) {
-        if (q.status === "waiting" || q.status === "serving") {
-          active.push(q);
-        } else {
-          inactive.push(q);
-        }
-      }
-
-      return NextResponse.json({
-        role: "quest",
-        active,
-        inactive,
-      });
-    }
-
-    return NextResponse.json(
-      { message: "unauthorized" },
-      { status: 401 }
+    const { rows } = await db.query(
+      `SELECT id, number, name, phone_num, start_at, end_at, status
+       FROM queue
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [user_id]
     );
+
+    const active = [];
+    const inactive = [];
+
+    for (const q of rows) {
+      if (q.status === "waiting" || q.status === "serving") {
+        active.push(q);
+      } else {
+        inactive.push(q);
+      }
+    }
+
+    return NextResponse.json({
+      role: "user",
+      active,
+      inactive,
+    });
 
   } catch (err) {
     console.error(err);
