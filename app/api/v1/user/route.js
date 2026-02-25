@@ -62,8 +62,6 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
-      console.log(hashedOtp)
-      console.log(otpRow.otp)
       return NextResponse.json(
         { success: false, message: "Invalid OTP" },
         { status: 400 }
@@ -195,7 +193,7 @@ export async function GET(req) {
 
     // 3. Select users
     const { rows } = await db.query(
-      `SELECT id, phone_num FROM user WHERE id=$1`,
+      `SELECT id, phone_num FROM users WHERE id=$1`,
       [id]
     );
 
@@ -216,7 +214,9 @@ export async function PUT(req) {
   const client = await db.connect();
 
   try {
-    const { ticket, otp } = await req.json();
+    const { otp } = await req.json();
+
+    const ticket = req.cookies.get("otp_ticket")?.value;
 
     if (!ticket) {
       return NextResponse.json(
@@ -328,18 +328,30 @@ export async function PUT(req) {
       ]
     );
 
-    // 6️⃣ Delete OTP (single use)
-    await client.query(
-      `DELETE FROM phone_otp WHERE id=$1`,
-      [otpRow.id]
+    const response = NextResponse.json(
+      { success: true },
+      { status: 200 }
     );
+
+    response.cookies.set("user_token", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+      path: "/",
+    });
+
+    response.cookies.set("otp_ticket", "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 0,
+      path: "/",
+    });
 
     await client.query("COMMIT");
 
-    return NextResponse.json(
-      { success: true, data: result.rows[0] },
-      { status: 200 }
-    );
+    return response
 
   } catch (err) {
     try { await client.query("ROLLBACK"); } catch {}

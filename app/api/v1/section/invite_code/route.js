@@ -6,7 +6,7 @@ import crypto from "crypto";
 export async function PUT(req) {
   const client = await db.connect();
 
-  // try {
+  try {
     // 2. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error) return auth.error;
@@ -47,8 +47,6 @@ export async function PUT(req) {
 
     const adminSectionId = adminRows[0].section_id;
 
-    console.log(adminSectionId)
-    console.log(sectionId)
     if (adminSectionId != sectionId) {
       return NextResponse.json(
         { success: false, message: "you are not admin of this section" },
@@ -102,17 +100,17 @@ export async function PUT(req) {
 
     return NextResponse.json({ success: true, data: {invite_code:inviteCode}}, { status: 201 });
 
-  // } catch (err) {
-  //   try {
-  //     await client.query("ROLLBACK");
-  //   } catch {}
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
 
-  //   console.error(err);
-  //   return NextResponse.json(
-  //     { success: false, message: "internal server error" },
-  //     { status: 500 }
-  //   );
-  // } finally {
-  //   client.release();
-  // }
+    console.error(err);
+    return NextResponse.json(
+      { success: false, message: "internal server error" },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
+  }
 }
