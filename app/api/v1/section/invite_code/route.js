@@ -47,7 +47,9 @@ export async function PUT(req) {
 
     const adminSectionId = adminRows[0].section_id;
 
-    if (adminSectionId !== sectionId) {
+    console.log(adminSectionId)
+    console.log(sectionId)
+    if (adminSectionId != sectionId) {
       return NextResponse.json(
         { success: false, message: "you are not admin of this section" },
         { status: 403 }
