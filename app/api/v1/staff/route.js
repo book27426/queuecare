@@ -3,15 +3,28 @@ import { db } from "@/lib/db";
 import { verifyStaff } from "@/lib/auth";
 import admin from "@/lib/firebaseAdmin";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://localhost:3000",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Access-Control-Allow-Credentials": "true",
-};
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://queuecare-beige.vercel.app",
+];
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+function getCorsHeaders(origin) {
+  if (allowedOrigins.includes(origin)) {
+    return {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Credentials": "true",
+    };
+  }
+  return {};
+}
+
+export async function OPTIONS(req) {
+  const origin = req.headers.get("origin");
+  return new Response(null, {
+    headers: getCorsHeaders(origin),
+  });
 }
 
 export async function POST(req) {
