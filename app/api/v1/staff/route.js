@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyStaff, verifyFirebaseToken } from "@/lib/auth";
+import admin from "@/lib/firebaseAdmin";
 
 export async function POST(req) {
   const authHeader = req.headers.get("authorization");
@@ -16,15 +17,14 @@ export async function POST(req) {
 
   let decoded;
 
-  // try {
-  //   decoded = await admin.auth().verifyIdToken(idToken);
-  // } catch (err) {
-  //   return NextResponse.json(
-  //     { success: false, message: "Invalid token" },
-  //     { status: 401 }
-  //   );
-  // }
-  decoded = await admin.auth().verifyIdToken(idToken);
+  try {
+    decoded = await admin.auth().verifyIdToken(idToken);
+  } catch (err) {
+    return NextResponse.json(
+      { success: false, message: "Invalid token" },
+      { status: 401 }
+    );
+  }
 
   const { uid, email, name } = decoded;
   const [first_name, ...rest] = (name || "").split(" ");
