@@ -24,9 +24,8 @@ export async function POST(req) {
 
     const { rows, rowCount } = await client.query(
       `SELECT *
-       FROM otp_verification
+       FROM phone_otp
        WHERE ticket=$1
-       AND phone_verify=false
        AND expires_at > NOW()
        FOR UPDATE`,
       [ticket]
@@ -53,9 +52,9 @@ export async function POST(req) {
 
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
-    if (hashedOtp !== otpRow.otp_hash) {
+    if (hashedOtp !== otpRow.otp) {
       await client.query(
-        `UPDATE otp_verification
+        `UPDATE phone_otp
          SET attempt = attempt + 1
          WHERE id=$1`,
         [otpRow.id]
@@ -63,6 +62,8 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
+      console.log(hashedOtp)
+      console.log(otpRow.otp)
       return NextResponse.json(
         { success: false, message: "Invalid OTP" },
         { status: 400 }
@@ -124,8 +125,8 @@ export async function POST(req) {
     }
 
     await client.query(
-      `DELETE FROM otp_verify WHERE id=$1`,
-      [otp_id]
+      `DELETE FROM phone_otp WHERE id=$1`,
+      [otpRow.id]
     );
 
     await client.query("COMMIT");
@@ -176,7 +177,7 @@ export async function POST(req) {
 }
 
 export async function GET(req) {
-  try {
+  // try {
     // 1. Get id params
     const { searchParams } = new URL(req.url);
     let id = searchParams.get("id");
@@ -194,7 +195,7 @@ export async function GET(req) {
 
     // 3. Select users
     const { rows } = await db.query(
-      `SELECT id, phone_num FROM users WHERE id=$1`,
+      `SELECT id, phone_num FROM user WHERE id=$1`,
       [id]
     );
 
@@ -203,12 +204,12 @@ export async function GET(req) {
 
     return NextResponse.json({success: true, "data":rows[0]});
 
-  } catch {
-    return NextResponse.json(
-      { success: false, message: "Unauthorized" },
-      { status: 401 }
-    );
-  }
+  // } catch {
+  //   return NextResponse.json(
+  //     { success: false, message: "Unauthorized" },
+  //     { status: 401 }
+  //   );
+  // }
 }
 
 export async function PUT(req) {
@@ -238,9 +239,8 @@ export async function PUT(req) {
 
     const otpResult = await client.query(
       `SELECT *
-       FROM otp_verification
+       FROM phone_otp
        WHERE ticket=$1
-       AND phone_verify=false
        AND expires_at > NOW()
        FOR UPDATE`,
       [ticket]
@@ -267,9 +267,9 @@ export async function PUT(req) {
 
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
-    if (hashedOtp !== otpRow.otp_hash) {
+    if (hashedOtp !== otpRow.otp) {
       await client.query(
-        `UPDATE otp_verification
+        `UPDATE phone_otp
          SET attempt = attempt + 1
          WHERE id=$1`,
         [otpRow.id]
@@ -330,8 +330,8 @@ export async function PUT(req) {
 
     // 6️⃣ Delete OTP (single use)
     await client.query(
-      `DELETE FROM otp_verify WHERE id=$1`,
-      [otp_id]
+      `DELETE FROM phone_otp WHERE id=$1`,
+      [otpRow.id]
     );
 
     await client.query("COMMIT");

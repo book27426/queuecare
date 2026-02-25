@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { verifyStaff } from "@/lib/auth";
 import crypto from "crypto";
 
-export async function POST(req) {
+export async function PUT(req) {
   const client = await db.connect();
 
   // try {
@@ -27,6 +27,30 @@ export async function POST(req) {
       return NextResponse.json(
         { success: false, message: "section_id is required" },
         { status: 400 }
+      );
+    }
+
+    const { rows: adminRows } = await client.query(
+      `SELECT section_id
+      FROM staff
+      WHERE id = $1
+        AND is_deleted = false`,
+      [staff_id]
+    );
+
+    if (!adminRows.length) {
+      return NextResponse.json(
+        { success: false, message: "admin not found" },
+        { status: 404 }
+      );
+    }
+
+    const adminSectionId = adminRows[0].section_id;
+
+    if (adminSectionId !== sectionId) {
+      return NextResponse.json(
+        { success: false, message: "you are not admin of this section" },
+        { status: 403 }
       );
     }
 

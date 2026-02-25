@@ -5,7 +5,7 @@ import crypto from "crypto";
 export async function POST(req) {
   const client = await db.connect();
 
-  try {
+  // try {
     const { phone_num } = await req.json();
 
     if (!phone_num || phone_num.trim() === "") {
@@ -27,7 +27,7 @@ export async function POST(req) {
 
     await client.query(
       `
-      INSERT INTO phone_otps
+      INSERT INTO phone_otp
       (phone_num, ticket, otp, expires_at, attempt, phone_verify)
       VALUES ($1, $2, $3, $4, 0, false)
       ON CONFLICT (phone_num)
@@ -60,13 +60,13 @@ export async function POST(req) {
 
     return response
 
-  } catch (err) {
-    await client.query("ROLLBACK");
-    return NextResponse.json(
-      { success: false, message: "Internal Server Error" },
-      { status: 500 }
-    );
-  } finally {
-    client.release();
-  }
+  // } catch (err) {
+  //   await client.query("ROLLBACK");
+  //   return NextResponse.json(
+  //     { success: false, message: "Internal Server Error" },
+  //     { status: 500 }
+  //   );
+  // } finally {
+  //   client.release();
+  // }
 }

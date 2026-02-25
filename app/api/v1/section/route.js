@@ -607,6 +607,30 @@ export async function DELETE(req) {
     
     const staff_id = auth.staff_id;
 
+    const { rows: adminRows } = await client.query(
+      `SELECT section_id
+      FROM staff
+      WHERE id = $1
+        AND is_deleted = false`,
+      [staff_id]
+    );
+
+    if (!adminRows.length) {
+      return NextResponse.json(
+        { success: false, message: "admin not found" },
+        { status: 404 }
+      );
+    }
+
+    const adminSectionId = adminRows[0].section_id;
+
+    if (adminSectionId !== sectionId) {
+      return NextResponse.json(
+        { success: false, message: "you are not admin of this section" },
+        { status: 403 }
+      );
+    }
+
     // 2. Get id params
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -648,7 +672,6 @@ export async function DELETE(req) {
       message: "deleted" 
     });
   } catch {
-    console.error("DELETE section error:", err);
     try {
       await client.query("ROLLBACK");
     } catch {}
