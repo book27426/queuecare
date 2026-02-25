@@ -3,6 +3,17 @@ import { db } from "@/lib/db";
 import { verifyStaff } from "@/lib/auth";
 import admin from "@/lib/firebaseAdmin";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "http://localhost:3000",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Credentials": "true",
+};
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function POST(req) {
   const authHeader = req.headers.get("authorization");
 
