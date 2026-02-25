@@ -175,7 +175,7 @@ export async function POST(req) {
 }
 
 export async function GET(req) {
-  // try {
+  try {
     // 1. Get id params
     const { searchParams } = new URL(req.url);
     let id = searchParams.get("id");
@@ -202,12 +202,12 @@ export async function GET(req) {
 
     return NextResponse.json({success: true, "data":rows[0]});
 
-  // } catch {
-  //   return NextResponse.json(
-  //     { success: false, message: "Unauthorized" },
-  //     { status: 401 }
-  //   );
-  // }
+  } catch {
+    return NextResponse.json(
+      { success: false, message: "Unauthorized" },
+      { status: 401 }
+    );
+  }
 }
 
 export async function PUT(req) {
@@ -215,6 +215,13 @@ export async function PUT(req) {
 
   try {
     const { otp } = await req.json();
+
+    if (!otp || typeof otp !== "string") {
+      return NextResponse.json(
+        { success: false, message: "OTP is required" },
+        { status: 400 }
+      );
+    }
 
     const ticket = req.cookies.get("otp_ticket")?.value;
 
@@ -305,6 +312,14 @@ export async function PUT(req) {
       [user_id]
     );
 
+    if (!oldUser.rowCount) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, message: "User not found" },
+        { status: 404 }
+      );
+    }
+
     const oldPhone = oldUser.rows[0].phone_num;
 
     // 4️⃣ Update phone
@@ -322,10 +337,32 @@ export async function PUT(req) {
        VALUES ($1, $2, $3, $4)`,
       [
         user_id,
-        "update_phone",
+        "update",
         `Changed phone from ${oldPhone} to ${phone_num}`,
         "user"
       ]
+    );
+
+    await client.query(
+      `DELETE FROM phone_otp WHERE id=$1`,
+      [otpRow.id]
+    );
+
+    await client.query("COMMIT");
+
+    const token = crypto.randomBytes(32).toString("hex");
+
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30); // 30 days
+
+    await client.query(
+      `INSERT INTO user_token (token, user_id, expires_at)
+       VALUES ($1, $2, $3)`,
+      [hashedToken, user_id, expiresAt]
     );
 
     const response = NextResponse.json(
@@ -348,8 +385,6 @@ export async function PUT(req) {
       maxAge: 0,
       path: "/",
     });
-
-    await client.query("COMMIT");
 
     return response
 
@@ -376,5 +411,18 @@ export async function DELETE(req) {
     [token_hash]
   );
 
-  return NextResponse.json({ success: false, message: "logged out" });
+  const response = NextResponse.json({
+    success: true,
+    message: "Logged out"
+  });
+
+  response.cookies.set("user_token", "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "strict",
+    maxAge: 0,
+    path: "/",
+  });
+
+  return response;
 }

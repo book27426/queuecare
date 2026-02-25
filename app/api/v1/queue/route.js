@@ -254,8 +254,9 @@ export async function PUT(req) {
     const auth = await verifyStaff(req);
     if (!auth.error) {
       await client.query("BEGIN");
-
-      const { staff_id, staff_section_id } = auth;
+      
+      const staff_id = auth.staff_id;
+      const staff_section_id = auth.section_id
       // 2. Get request body
       const { status, queue_detail, section_id } = await req.json();
 
@@ -289,6 +290,8 @@ export async function PUT(req) {
 
       // Section permission check
       if (queue.section_id !== staff_section_id) {
+        console.log(queue.section_id)
+        console.log(staff_section_id)
         await client.query("ROLLBACK");
         return NextResponse.json(
           { success: false, message: "not allowed" },
@@ -361,11 +364,13 @@ export async function PUT(req) {
         const oldQueue = updateOld.rows[0];
         // 3.4.2 INSERT queue
         result = await client.query(
-          `INSERT INTO queue (number, detail, queue_date, user_id, section_id, status, token)
-          VALUES ($1,$2,$3,$4,$5,'waiting',$6)
+          `INSERT INTO queue (number, name, phone_num, detail, queue_date, user_id, section_id, status, token)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,'waiting',$8)
           RETURNING *`,
           [
             oldQueue.number,
+            oldQueue.name,
+            oldQueue.phone_num,
             oldQueue.detail,
             oldQueue.queue_date,
             oldQueue.user_id,
@@ -449,7 +454,7 @@ export async function PUT(req) {
 
       if (result.rowCount) {
         await client.query("COMMIT");
-        return NextResponse.json({ success: true, role: "guest", data: result.rows[0] });
+        return NextResponse.json({ success: true, role: "guest", message: "cancel" });
       }
     }
 
