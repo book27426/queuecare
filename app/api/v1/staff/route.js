@@ -16,14 +16,15 @@ export async function POST(req) {
 
   let decoded;
 
-  try {
-    decoded = await admin.auth().verifyIdToken(idToken);
-  } catch (err) {
-    return NextResponse.json(
-      { success: false, message: "Invalid token" },
-      { status: 401 }
-    );
-  }
+  // try {
+  //   decoded = await admin.auth().verifyIdToken(idToken);
+  // } catch (err) {
+  //   return NextResponse.json(
+  //     { success: false, message: "Invalid token" },
+  //     { status: 401 }
+  //   );
+  // }
+  decoded = await admin.auth().verifyIdToken(idToken);
 
   const { uid, email, name } = decoded;
   const [first_name, ...rest] = (name || "").split(" ");
