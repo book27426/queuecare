@@ -66,7 +66,7 @@ export async function POST(req) {
     let needSetCookie = false;
 
     if (user_id === null) {
-      const guest_token  = req.cookies.get("guest_token")?.value;
+      guest_token  = req.cookies.get("guest_token")?.value;
       if(!guest_token){
         guest_token = crypto.randomUUID();
         needSetCookie = true;
