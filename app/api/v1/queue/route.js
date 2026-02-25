@@ -61,11 +61,16 @@ export async function POST(req) {
       const lastNumber = parseInt(lastQueue.rows[0].number, 10);
       number = String(lastNumber + 1).padStart(3, "0");
     }
-    // 4. Generate token
-    let token = null;
+    // 4. Generate guest_token
+    let guest_token = null;
+    let needSetCookie = false;
 
     if (user_id === null) {
-      token = crypto.randomUUID();
+      const guest_token  = req.cookies.get("guest_token")?.value;
+      if(!guest_token){
+        guest_token = crypto.randomUUID();
+        needSetCookie = true;
+      }
     }
     
     // 5. Insert section
@@ -74,7 +79,7 @@ export async function POST(req) {
         (number, name, phone_num, user_id, section_id, token)
         VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [number, name, phone_num, user_id, section_id, token]
+      [number, name, phone_num, user_id, section_id, guest_token]
     );
 
     // 6. Insert log
@@ -88,7 +93,23 @@ export async function POST(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true, data: queueInsert.rows[0]}, { status: 201 });
+    const response = NextResponse.json(
+      { success: true, data: queueInsert.rows[0] },
+      { status: 201 }
+    );
+
+    if(needSetCookie){
+      response.cookies.set("guest_token", guest_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        maxAge: 60 * 60 * 24 * 30, // 30 days,
+        path: "/",
+      });
+    }
+
+    return response;
+    
   } catch (err) {
     try {
       await client.query("ROLLBACK");
@@ -106,12 +127,8 @@ export async function POST(req) {
 
 export async function GET(req) {
   try {
-    const { searchParams } = new URL(req.url);
-    const tokenParam = searchParams.get("tokens");
-
-    const tokens = tokenParam
-      ? tokenParam.split(",").map(t => t.trim()).filter(Boolean)
-      : [];
+      
+    const guest_token  = req.cookies.get("guest_token")?.value;
 
     const staffAuth = await verifyStaff(req);
 
@@ -175,19 +192,33 @@ export async function GET(req) {
     // ===============================
     // 👤 GUEST VIEW (NOT VERIFIED)
     // ===============================
-    if (tokens.length > 0) {
+    if (guest_token) {
       const { rows } = await db.query(
         `SELECT *
          FROM queue
-         WHERE token = ANY($1::text[])
+         WHERE token = $1
          ORDER BY created_at DESC`,
-        [tokens]
+        [guest_token]
       );
+
+      const active = [];
+      const inactive = [];
+
+      for (const q of rows) {
+        if (q.status === "waiting" || q.status === "serving") {
+          active.push(q);
+        } else {
+          inactive.push(q);
+        }
+      }
 
       return NextResponse.json({
         success: true,
         role: "guest",
-        data: rows,
+        data:{
+          active,
+          inactive
+        }
       });
     }
 
@@ -405,16 +436,16 @@ export async function PUT(req) {
       });
     }
 
-    const body = await req.json();
-    const token = body?.token;
+    const guest_token  = req.cookies.get("guest_token")?.value;
 
-    if (typeof token === "string") {
+    if (guest_token) {
       const result = await client.query(
         `UPDATE queue SET status='cancel', end_at=NOW()
          WHERE id=$1 AND token=$2 AND status='waiting'
          RETURNING *`,
-        [id, token]
+        [id, guest_token]
       );
+
 
       if (result.rowCount) {
         await client.query("COMMIT");

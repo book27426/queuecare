@@ -7,11 +7,15 @@ export async function POST(req) {
   const client = await db.connect();
 
   try {
-    const { ticket, otp ,queue_token } = await req.json();
+    const { otp } = await req.json();
+
+    const guest_token  = req.cookies.get("guest_token")?.value;
+
+    const ticket = req.cookies.get("otp_ticket")?.value;
 
     if (!ticket || !otp) {
       return NextResponse.json(
-        { success: false, message: "ticket and otp required" },
+        { success: false, message: "Invalid session" },
         { status: 400 }
       );
     }
@@ -76,7 +80,6 @@ export async function POST(req) {
 
     if (userResult.rowCount) {
       user_id = userResult.rows[0].id;
-      
     } else {
       const insertUser = await client.query(
         `INSERT INTO users (phone_num)
@@ -96,6 +99,7 @@ export async function POST(req) {
 
     // Generate secure session token
     const token = crypto.randomBytes(32).toString("hex");
+
     const hashedToken = crypto
       .createHash("sha256")
       .update(token)
@@ -104,21 +108,21 @@ export async function POST(req) {
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30); // 30 days
 
     await client.query(
-      `INSERT INTO user_token (token_hash, user_id, expires_at)
+      `INSERT INTO user_token (token, user_id, expires_at)
        VALUES ($1, $2, $3)`,
       [hashedToken, user_id, expiresAt]
     );
 
-    if (Array.isArray(queue_token) && queue_token.length > 0) {
+    if (guest_token) {
       await client.query(
         `UPDATE queue
         SET user_id = $1, token = null
-        WHERE token = ANY($2::text[])
+        WHERE token = $2
         AND user_id IS NULL`,
-        [user_id, queue_token]//do i need to update phone num
+        [user_id, guest_token]
       );
     }
-    // DELETE OTP → single use only
+
     await client.query(
       `DELETE FROM otp_verify WHERE id=$1`,
       [otp_id]
@@ -126,14 +130,36 @@ export async function POST(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json(
-      {
-        success: true,
-        user_id,
-        token // return raw token ONCE
-      },
-      { status: 201 }
+    const response = NextResponse.json(
+      { success: true },
+      { status: 200 }
     );
+
+    response.cookies.set("user_token", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+      path: "/",
+    });
+
+    response.cookies.set("otp_ticket", "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 0,
+      path: "/",
+    });
+
+    response.cookies.set("guest_token", "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 0,
+      path: "/",
+    });
+    
+    return response;
 
   } catch (err) {
     try {
@@ -334,7 +360,7 @@ export async function DELETE(req) {
   const { token_hash } = auth;
 
   await db.query(
-    `DELETE FROM user_token WHERE token_hash=$1`,
+    `DELETE FROM user_token WHERE token=$1`,
     [token_hash]
   );
 

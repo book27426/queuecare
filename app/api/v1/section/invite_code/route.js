@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verifyStaff, verifyUser } from "@/lib/auth";
+import { verifyStaff } from "@/lib/auth";
 import crypto from "crypto";
 
 export async function POST(req) {
   const client = await db.connect();
 
-  try {
+  // try {
     // 2. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error) return auth.error;
 
-    if (auth.role !== "admin") {
+    if (!["admin", "super_admin"].includes(auth.role)) {
       return NextResponse.json(
         { success: false, message: "Admin only" },
         { status: 403 }
@@ -76,17 +76,17 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true, data: {invite_code:inviteCode}}, { status: 201 });
 
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
+  // } catch (err) {
+  //   try {
+  //     await client.query("ROLLBACK");
+  //   } catch {}
 
-    console.error(err);
-    return NextResponse.json(
-      { success: false, message: "internal server error" },
-      { status: 500 }
-    );
-  } finally {
-    client.release();
-  }
+  //   console.error(err);
+  //   return NextResponse.json(
+  //     { success: false, message: "internal server error" },
+  //     { status: 500 }
+  //   );
+  // } finally {
+  //   client.release();
+  // }
 }

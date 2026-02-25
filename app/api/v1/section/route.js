@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verifyStaff, verifyUser } from "@/lib/auth";
+import { verifyStaff } from "@/lib/auth";
 export async function POST(req) {
   const client = await db.connect();
 
@@ -9,7 +9,7 @@ export async function POST(req) {
     const auth = await verifyStaff(req);
     if (auth.error) return auth.error;
     
-    if (auth.role !== "admin") {
+    if (!["admin", "super_admin"].includes(auth.role)) {
       return NextResponse.json(
         { success: false, message: "Forbidden - admin only" },
         { status: 403 }
@@ -32,11 +32,10 @@ export async function POST(req) {
     }
 
     const wait = Number(wait_default ?? 5);
-    const parent = parent_id ? Number(parent_id) : 0;
+    const parent = parent_id ? Number(parent_id) : null;
 
     if (
-      isNaN(wait) || wait < 0 ||
-      isNaN(depth) || depth < 0) {
+      isNaN(wait) || wait < 0) {
       return NextResponse.json(
         { success: false, message: "invalid numeric values" },
         { status: 400 }
@@ -122,9 +121,9 @@ export async function GET(req) {
         SELECT id, name, wait_default, predict_time
         FROM section
         WHERE name ILIKE '%' || $1 || '%'
-        AND is_deleted = false
+        AND is_deleted = false AND depth_int = 0
         `,
-        [name]///depth_int=0
+        [name]
       );
 
       return NextResponse.json({
@@ -202,11 +201,11 @@ export async function GET(req) {
 
       const { rows: staffs } = await db.query(
         `
-        SELECT id, name
+        SELECT id, first_name, last_name
         FROM staff
         WHERE section_id = ANY($1)
           AND is_deleted = false
-        ORDER BY name ASC
+        ORDER BY first_name ASC
         `,
         [sectionIds]
       );
@@ -216,8 +215,8 @@ export async function GET(req) {
         `
         SELECT
           TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
-          COUNT(*) FILTER (WHERE status != 'cancelled') AS new_queue,
-          COUNT(*) FILTER (WHERE status = 'completed') AS completed
+          COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
+          COUNT(*) FILTER (WHERE status = 'complete') AS complete
         FROM queue
         WHERE section_id = $1
           AND created_at >= CURRENT_DATE
@@ -231,14 +230,14 @@ export async function GET(req) {
       const { rows: avgRows } = await db.query(
         `
         SELECT
-          AVG(EXTRACT(EPOCH FROM (completed_at - started_at)) / 60)
+          AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60)
             AS avg_operation_minutes
         FROM queue
         WHERE section_id = $1
-          AND status = 'completed'
-          AND started_at IS NOT NULL
-          AND completed_at IS NOT NULL
-          AND completed_at >= CURRENT_DATE
+          AND status = 'complete'
+          AND start_at IS NOT NULL
+          AND end_at IS NOT NULL
+          AND end_at >= CURRENT_DATE
         `,
         [sectionId]
       );
@@ -247,8 +246,8 @@ export async function GET(req) {
       const { rows: totalRows } = await db.query(
         `
         SELECT
-          COUNT(*) FILTER (WHERE status != 'cancelled') AS total_new,
-          COUNT(*) FILTER (WHERE status = 'completed') AS total_completed
+          COUNT(*) FILTER (WHERE status != 'cancel') AS total_new,
+          COUNT(*) FILTER (WHERE status = 'complete') AS total_complete
         FROM queue
         WHERE section_id = $1
           AND created_at >= CURRENT_DATE
@@ -264,7 +263,7 @@ export async function GET(req) {
           Number(totalRows[0].total_new) / hoursPassed,
 
         est_complete_case_per_hour:
-          Number(totalRows[0].total_completed) / hoursPassed,
+          Number(totalRows[0].total_complete) / hoursPassed,
 
         est_avg_operation_time_per_case_minutes:
           Number(avgRows[0].avg_operation_minutes) || 0,
@@ -334,7 +333,6 @@ export async function PUT(req) {
     if (auth.error) return auth.error;
 
     const staff_id = auth.staff_id;
-    const isAdmin = auth.role === "admin";
 
     // 2️⃣ Get section id
     const { searchParams } = new URL(req.url);
@@ -389,7 +387,7 @@ export async function PUT(req) {
 
     if (name !== undefined || parent_id !== undefined) {
 
-      if (!isAdmin) {
+      if (!["admin", "super_admin"].includes(auth.role)) {
         await client.query("ROLLBACK");
         return NextResponse.json(
           { success: false, message: "Forbidden - admin only for structure change" },
@@ -600,7 +598,7 @@ export async function DELETE(req) {
     const auth = await verifyStaff(req);
     if (auth.error) return auth.error;
     
-    if (auth.role !== "admin") {
+    if (!["admin", "super_admin"].includes(auth.role)) {
       return NextResponse.json(
         { success: false, message: "Forbidden - admin only" },
         { status: 403 }

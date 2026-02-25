@@ -45,10 +45,20 @@ export async function POST(req) {
 
     console.log("OTP:", otp);
 
-    return NextResponse.json(
-      { success: true, data:{ticket} },
+    const response = NextResponse.json(
+      { success: true },
       { status: 200 }
     );
+
+    response.cookies.set("otp_ticket", ticket, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 3 * 60,
+      path: "/",
+    });
+
+    return response
 
   } catch (err) {
     await client.query("ROLLBACK");
