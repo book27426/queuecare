@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 
+// 1. Replace with your actual Firebase config from the console
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -13,70 +14,55 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL; // make sure this exists
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
 export default function GoogleLoginPage() {
-  const [loading, setLoading] = useState(false);
+  const [token, setToken] = useState('');
 
   const handleGoogleLogin = async () => {
     try {
-      setLoading(true);
-
-      // 1️⃣ Google login
       const result = await signInWithPopup(auth, provider);
-
-      // 2️⃣ Get Firebase ID token
+      // This is the token your backend verifyUser(req) needs
       const idToken = await result.user.getIdToken(true);
-
-      // 3️⃣ Send POST to backend
-
-      console.log("API_URL:", API_URL);
-      console.log("Final URL:", `${API_URL}api/v1/staff`);
-      const response = await fetch(`${API_URL}api/v1/staff`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${idToken}`,
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify({})
-      });
-
-      const data = await response.json();
-
-      console.log("Backend response:", data);
-      alert("Success! Check console.");
-
+      setToken(idToken);
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Login Error:", error);
       alert(error.message);
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'sans-serif' }}>
       <h1>API Auth Tester (Google)</h1>
-
-      <button
+      
+      <button 
         onClick={handleGoogleLogin}
-        disabled={loading}
-        style={{
-          padding: '10px 20px',
-          cursor: 'pointer',
-          backgroundColor: '#4285F4',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px'
-        }}
+        style={{ padding: '10px 20px', cursor: 'pointer', backgroundColor: '#4285F4', color: 'white', border: 'none', borderRadius: '4px' }}
       >
-        {loading ? "Processing..." : "Sign in with Google & Send POST"}
+        Sign in with Google
       </button>
+
+      {token && (
+        <div style={{ marginTop: '20px' }}>
+          <p><strong>Success! Copy this token into Postman:</strong></p>
+          <textarea 
+            readOnly 
+            value={token} 
+            style={{ width: '100%', height: '150px', marginTop: '10px', fontSize: '12px' }}
+          />
+          <button 
+            onClick={() => {
+              navigator.clipboard.writeText(token);
+              alert("Copied!");
+            }}
+            style={{ marginTop: '10px', display: 'block', margin: '10px auto' }}
+          >
+            Copy to Clipboard
+          </button>
+        </div>
+      )}
     </div>
   );
 }
