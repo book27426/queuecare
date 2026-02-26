@@ -39,12 +39,7 @@ export async function POST(req) {
       section_id <= 0 ||
       !name ||
       !phone_num
-    ) {
-      return NextResponse.json(
-        { success: false, message: "invalid body" },
-        { status: 400 }
-      );
-    }
+    )return json({ success: false, message: "invalid body" }, 400, origin);
 
     await client.query("BEGIN");
 
@@ -57,10 +52,7 @@ export async function POST(req) {
 
     if (!sectionCheck.rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "section not found" },
-        { status: 404 }
-      );
+      return json({ success: false, message: "section not found" }, 404, origin);
     }
 
     // 3. generate number
@@ -135,10 +127,7 @@ export async function POST(req) {
     } catch {}
 
     console.error(err);
-    return NextResponse.json(
-      { success: false, message: "internal server error" },
-      { status: 500 }
-    );
+    return json({ success: false, message: "internal server error" }, 500, origin);
   } finally {
     client.release();
   }
@@ -163,11 +152,11 @@ export async function GET(req) {
         [section_id]
       );
 
-      return NextResponse.json({
+      return json({
         success: true,
         role: "staff",
         data: rows,
-      });
+      }, 200, origin);
     }
 
     // ===============================
@@ -197,14 +186,14 @@ export async function GET(req) {
         }
       }
 
-      return NextResponse.json({
+      return json({
         success: true,
         role: "user",
         data:{
           active,
           inactive
         }
-      });
+      }, 200, origin);
     }
 
     // ===============================
@@ -230,27 +219,20 @@ export async function GET(req) {
         }
       }
 
-      return NextResponse.json({
+      return json({
         success: true,
         role: "guest",
         data:{
           active,
           inactive
         }
-      });
+      }, 200, origin);
     }
 
-    return NextResponse.json(
-      { success: false, message: "unauthorized" },
-      { status: 401 }
-    );
-
+    return json({ success: false, message: "unauthorized" }, 401, origin);
   } catch (err) {
     console.error(err);
-    return NextResponse.json(
-      { success: false, message: "internal server error" },
-      { status: 500 }
-    );
+    return json({ success: false, message: "internal server error" }, 500, origin);
   }
 }
 
@@ -263,10 +245,7 @@ export async function PUT(req) {
     const id = Number(searchParams.get("id"));
 
     if (!Number.isInteger(id) || id <= 0) {
-      return NextResponse.json(
-        { success: false, message: "valid id is required" },
-        { status: 400 }
-      );
+      return json({ success: false, message: "valid id is required" }, 400, origin);
     }
 
     // 1. Verify staff
@@ -283,10 +262,7 @@ export async function PUT(req) {
 
       if (!allowedStatus.includes(status)) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "invalid status" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "invalid status" }, 400, origin);
       }
 
       const queueCheck = await client.query(
@@ -299,23 +275,15 @@ export async function PUT(req) {
 
       if (!queueCheck.rowCount) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "queue not found" },
-          { status: 404 }
-        );
+        return json({ success: false, message: "queue not found" }, 404, origin);
       }
 
       const queue = queueCheck.rows[0];
 
       // Section permission check
       if (queue.section_id !== staff_section_id) {
-        console.log(queue.section_id)
-        console.log(staff_section_id)
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "not allowed" },
-          { status: 403 }
-        );
+        return json({ success: false, message: "not allowed" }, 403, origin);
       }
 
       let result;
@@ -357,10 +325,7 @@ export async function PUT(req) {
 
         if (!sectionCheck.rowCount) {
           await client.query("ROLLBACK");
-          return NextResponse.json(
-            { success: false, message: "invalid target section" },
-            { status: 400 }
-          );
+          return json({ success: false, message: "invalid target section" }, 400, origin);
         }
 
         // 3.4.1 UPDATE queue transfer
@@ -374,10 +339,7 @@ export async function PUT(req) {
 
         if (!updateOld.rowCount) {
           await client.query("ROLLBACK");
-          return NextResponse.json(
-            { success: false, message: "queue not found or invalid state" },
-            { status: 400 }
-          );
+          return json({ success: false, message: "queue not found or invalid state" }, 400, origin);
         }
 
         const oldQueue = updateOld.rows[0];
@@ -399,18 +361,12 @@ export async function PUT(req) {
         );
       } else {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "invalid status" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "invalid status" }, 400, origin);
       }
 
       if (!result.rowCount) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "queue not found or invalid state" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "queue not found or invalid state" }, 400, origin);
       }
 
       // 4. Insert log
@@ -423,7 +379,7 @@ export async function PUT(req) {
       );
 
       await client.query("COMMIT");
-      return NextResponse.json({ success: true, role: "staff", data: result.rows[0]}, { status: 200 });
+      return json({ success: true, role: "staff", data: result.rows[0]}, 200, origin);
     }
     // 1. Verify User
     const userAuth = await verifyUser(req);
@@ -445,24 +401,22 @@ export async function PUT(req) {
 
       if (!result.rowCount) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "cannot cancel" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "cannot cancel" }, 400, origin);
       }
 
       await client.query("COMMIT");
 
-      return NextResponse.json({
+      return json({
         success: true,
         role: "user",
         data: result.rows[0]
-      });
+      }, 200, origin);
     }
 
     const guest_token  = req.cookies.get("guest_token")?.value;
 
     if (guest_token) {
+      await client.query("BEGIN");
       const result = await client.query(
         `UPDATE queue SET status='cancel', end_at=NOW()
          WHERE id=$1 AND token=$2 AND status='waiting'
@@ -473,13 +427,12 @@ export async function PUT(req) {
 
       if (result.rowCount) {
         await client.query("COMMIT");
-        return NextResponse.json({ success: true, role: "guest", message: "cancel" });
+        return json({ success: true, role: "guest", message: "cancel" }, 200, origin);
       }
     }
 
     await client.query("ROLLBACK");
-    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
-
+    return json({ success: false, message: "Unauthorized" }, 401, origin);
   } catch (err) {
     console.error("Update queue error:", err);
 
@@ -487,10 +440,7 @@ export async function PUT(req) {
       await client.query("ROLLBACK");
     } catch {}
 
-    return NextResponse.json(
-      { success: false, message: "internal server error" },
-      { status: 500 }
-    );
+    return json({ success: false, message: "internal server error" }, 500, origin);
   } finally {
     client.release();
   }
