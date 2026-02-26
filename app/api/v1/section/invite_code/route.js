@@ -109,7 +109,7 @@ export async function PUT(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true, data: {invite_code:inviteCode}}, { status: 201 });
+    return NextResponse.json({ success: true, data: {invite_code:inviteCode}}, { status: 200 });
 
   } catch (err) {
     try {

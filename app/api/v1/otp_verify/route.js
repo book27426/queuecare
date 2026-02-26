@@ -16,7 +16,7 @@ export async function OPTIONS() {
 export async function POST(req) {
   const client = await db.connect();
 
-  // try {
+  try {
     const { phone_num } = await req.json();
 
     if (!phone_num || phone_num.trim() === "") {
@@ -71,13 +71,13 @@ export async function POST(req) {
 
     return response
 
-  // } catch (err) {
-  //   await client.query("ROLLBACK");
-  //   return NextResponse.json(
-  //     { success: false, message: "Internal Server Error" },
-  //     { status: 500 }
-  //   );
-  // } finally {
-  //   client.release();
-  // }
+  } catch (err) {
+    await client.query("ROLLBACK");
+    return NextResponse.json(
+      { success: false, message: "Internal Server Error" },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
+  }
 }

@@ -634,15 +634,6 @@ export async function DELETE(req) {
       );
     }
 
-    const adminSectionId = adminRows[0].section_id;
-
-    if (adminSectionId !== sectionId) {
-      return NextResponse.json(
-        { success: false, message: "you are not admin of this section" },
-        { status: 403 }
-      );
-    }
-
     // 2. Get id params
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -651,6 +642,15 @@ export async function DELETE(req) {
       return NextResponse.json(
         { success: false, message: "valid id is required" },
         { status: 400 }
+      );
+    }
+
+    const adminSectionId = adminRows[0].section_id;
+
+    if (adminSectionId !== id) {
+      return NextResponse.json(
+        { success: false, message: "you are not admin of this section" },
+        { status: 403 }
       );
     }
 
