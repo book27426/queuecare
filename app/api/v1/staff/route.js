@@ -32,7 +32,6 @@ export async function POST(req) {
     }
 
     const idToken = authHeader.split("Bearer ")[1];
-
     let decoded;
 
     try {
@@ -127,9 +126,7 @@ export async function GET(req) {
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) {
-      return withCors(auth.error, origin);
-    }
+    if (auth.error)return withCors(auth.error, origin);
 
     // 2. Get id params
     const { searchParams } = new URL(req.url);
@@ -165,9 +162,7 @@ export async function PUT(req) {
 
   try {
     const auth = await verifyStaff(req);
-    if (auth.error) {
-      return withCors(auth.error, origin);
-    }
+    if (auth.error)return withCors(auth.error, origin);
 
     const { staff_id: authId, role: authRole } = auth;
 
@@ -350,9 +345,7 @@ export async function DELETE(req) {
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) {
-      return withCors(auth.error, origin);
-    }
+    if (auth.error)return withCors(auth.error, origin);
 
     if (!["admin", "super_admin"].includes(auth.role)) {
       return json({ "success": false, message: "admin only" }, 403, origin);

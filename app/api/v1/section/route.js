@@ -4,6 +4,13 @@ import { verifyStaff } from "@/lib/auth";
 
 import { withCors, getCorsHeaders } from "@/lib/cors";
 
+function json(data, status, origin) {
+  return withCors(
+    NextResponse.json(data, { status }),
+    origin
+  );
+}
+
 export async function OPTIONS(req) {
   const origin = req.headers.get("origin");
 
@@ -14,19 +21,16 @@ export async function OPTIONS(req) {
 }
 
 export async function POST(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    if (auth.error)return withCors(auth.error, origin);
     
-    if (!["admin", "super_admin"].includes(auth.role)) {
-      return NextResponse.json(
-        { success: false, message: "Forbidden - admin only" },
-        { status: 403 }
-      );
-    }
+    if (!["admin", "super_admin"].includes(auth.role))
+      return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
 
     const staff_id = auth.staff_id;
     // 2. Get request body
@@ -36,23 +40,14 @@ export async function POST(req) {
       wait_default
     } = await req.json();
 
-    if (!name) {
-      return NextResponse.json(
-        { success: false, message: "name is required" },
-        { status: 400 }
-      );
-    }
+    if (!name)
+      return json({ success: false, message: "name is required" }, 400, origin);
 
     const wait = Number(wait_default ?? 5);
     const parent = parent_id ? Number(parent_id) : null;
 
-    if (
-      isNaN(wait) || wait < 0) {
-      return NextResponse.json(
-        { success: false, message: "invalid numeric values" },
-        { status: 400 }
-      );
-    }
+    if (isNaN(wait) || wait < 0)
+      return json({ success: false, message: "invalid numeric values" }, 400, origin);
 
     await client.query("BEGIN");
 
@@ -66,10 +61,7 @@ export async function POST(req) {
 
       if (!parentCheck.rowCount) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "parent section not found" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "parent section not found" },400 , origin);
       }
 
       depth = parentCheck.rows[0].depth_int + 1;
@@ -77,10 +69,8 @@ export async function POST(req) {
 
     if (depth > 5) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "maximum depth exceeded" },
-        { status: 400 }
-      );
+      return json(
+        { success: false, message: "maximum depth exceeded" }, 400, origin);
     }
 
     // 3. Insert section
@@ -101,7 +91,7 @@ export async function POST(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true, data: section.rows[0]}, { status: 201 });
+    return json({ success: true, data: section.rows[0] }, 201, origin);
 
   } catch (err) {
     try {
@@ -109,16 +99,14 @@ export async function POST(req) {
     } catch {}
 
     console.error(err);
-    return NextResponse.json(
-      { success: false, message: "internal server error" },
-      { status: 500 }
-    );
+    return json({ success: false, message: "internal server error" }, 500, origin);
   } finally {
     client.release();
   }
 }
 
 export async function GET(req) {
+  const origin = req.headers.get("origin");
   try {
     // 1. Get id params
     const { searchParams} = new URL(req.url);
@@ -138,34 +126,26 @@ export async function GET(req) {
         [name]
       );
 
-      return NextResponse.json({
+      return json({
         success: true,
         mode: "public-search",
         data: rows
-      });
+      }, 200, origin);
     }
 
     // 2. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    if (auth.error) return withCors(auth.error, origin);
 
     const { section_id: staffSectionId } = auth;
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, message: "id is required" },
-        { status: 400 }
-      );
-    }
+    if (!id)
+      return json({ success: false, message: "id is required" }, 400, origin);
 
     const sectionId = Number(id);
 
-    if (!Number.isInteger(sectionId) || sectionId <= 0) {
-      return NextResponse.json(
-        { success: false, message: "valid id is required" },
-        { status: 400 }
-      );
-    }
+    if (!Number.isInteger(sectionId) || sectionId <= 0)
+      return json({ success: false, message: "valid id is required" }, 400, origin);
 
     // 3. GET section
     const { rows: sectionRows } = await db.query(
@@ -175,10 +155,7 @@ export async function GET(req) {
     );
 
     if (!sectionRows.length) {
-      return NextResponse.json(
-        { success: false, message: "Not found" },
-        { status: 404 }
-      );
+      return json({ success: false, message: "Not found" }, 404, origin);
     }
 
     const section = sectionRows[0];
@@ -285,15 +262,15 @@ export async function GET(req) {
         last_updated: new Date().toISOString(),
       };
 
-      return NextResponse.json({
+      return json({
         success: true,
         mode: "main-section",
-        section : section,
-        stats: stats,
+        section,
+        stats,
         sub_sections: subSections,
-        queues: queues,
-        staffs: staffs
-      });
+        queues,
+        staffs
+      }, 200, origin);
     }
 
     // ✅ CASE B: Staff belongs to SUBSECTION of requested section
@@ -314,35 +291,30 @@ export async function GET(req) {
         [staffSectionId]
       );
 
-      return NextResponse.json({
+      return json({
         success: true,
         mode: "sub-section-staff",
         parent_section: section,
         own_section: ownSection[0]
-      });
+      }, 200, origin);
     }
 
-    return NextResponse.json(
-      { success: false, message: "Unauthorized" },
-      { status: 403 }
-    );
+    return json({ success: false, message: "Unauthorized" }, 403, origin);
 
   } catch (err) {
     console.error("Get section error:", err);
-    return NextResponse.json(
-      { success: false, message: "Internal server error" },
-      { status: 500 }
-    );
+    return json({ success: false, message: "Internal server error" }, 500, origin);
   }
 }
 
 export async function PUT(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
     // 1️⃣ Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    if (auth.error)return withCors(auth.error, origin);
 
     const staff_id = auth.staff_id;
 
@@ -351,12 +323,8 @@ export async function PUT(req) {
     const idParam = searchParams.get("id");
     const sectionId = Number(idParam);
 
-    if (!idParam || Number.isNaN(sectionId)) {
-      return NextResponse.json(
-        { success: false, message: "Valid id is required" },
-        { status: 400 }
-      );
-    }
+    if (!idParam || Number.isNaN(sectionId))
+      return json({ success: false }, 400, origin);
 
     // 3️⃣ Parse body
     const { name, parent_id, wait_default } = await req.json();
@@ -366,10 +334,7 @@ export async function PUT(req) {
       parent_id === undefined &&
       wait_default === undefined
     ) {
-      return NextResponse.json(
-        { success: false, message: "At least one field must be provided" },
-        { status: 400 }
-      );
+      return json({ success: false, message: "At least one field must be provided" }, 400, origin);
     }
 
     await client.query("BEGIN");
@@ -384,10 +349,7 @@ export async function PUT(req) {
 
       if (Number.isNaN(waitValue) || waitValue < 0) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "Invalid wait_default value" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "Invalid wait_default value" }, 400, origin);
       }
     }
 
@@ -401,18 +363,12 @@ export async function PUT(req) {
 
       if (!["admin", "super_admin"].includes(auth.role)) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "Forbidden - admin only for structure change" },
-          { status: 403 }
-        );
+        return json({ success: false, message: "Forbidden - admin only for structure change" }, 403, origin);
       }
 
       if (name !== undefined && name.trim() === "") {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "Name cannot be empty" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "Name cannot be empty" }, 400, origin);
       }
 
       parent =
@@ -422,19 +378,13 @@ export async function PUT(req) {
 
       if (parent !== null && Number.isNaN(parent)) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "Invalid parent_id" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "Invalid parent_id" }, 400, origin);
       }
 
       // Prevent self-parent
       if (parent === sectionId) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "Section cannot be its own parent" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "Section cannot be its own parent" }, 400, origin);
       }
 
       // Prevent circular reference
@@ -457,10 +407,7 @@ export async function PUT(req) {
 
         if (cycleCheck.rowCount > 0) {
           await client.query("ROLLBACK");
-          return NextResponse.json(
-            { success: false, message: "Circular reference detected" },
-            { status: 400 }
-          );
+          return json({ success: false, message: "Circular reference detected" }, 400, origin);
         }
       }
 
@@ -477,10 +424,7 @@ export async function PUT(req) {
 
         if (!parentRow.rowCount) {
           await client.query("ROLLBACK");
-          return NextResponse.json(
-            { success: false, message: "Parent section not found" },
-            { status: 400 }
-          );
+          return json({ success: false, message: "Parent section not found" }, 400, origin);
         }
 
         depth = parentRow.rows[0].depth_int + 1;
@@ -489,10 +433,7 @@ export async function PUT(req) {
       // 🔥 Depth limit protection
       if (depth > 5) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "Maximum depth exceeded (max 5)" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "Maximum depth exceeded (max 5)" }, 400, origin);
       }
     }
 
@@ -524,10 +465,7 @@ export async function PUT(req) {
 
     if (fields.length === 0) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "Nothing to update" },
-        { status: 400 }
-      );
+      return json({ success: false, message: "Nothing to update" }, 400, origin);
     }
 
     values.push(sectionId);
@@ -543,10 +481,7 @@ export async function PUT(req) {
 
     if (!result.rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "Section not found" },
-        { status: 404 }
-      );
+      return json({ success: false, message: "Section not found" }, 404, origin);
     }
 
     // Recalculate subtree depth
@@ -585,37 +520,28 @@ export async function PUT(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json(
-      { success: true, data: result.rows[0] },
-      { status: 200 }
-    );
+    return json({ success: true, data: result.rows[0] }, 200, origin);
 
   } catch (err) {
     console.error("Update section error:", err);
     try { await client.query("ROLLBACK"); } catch {}
-    return NextResponse.json(
-      { success: false, message: "Internal Server Error" },
-      { status: 500 }
-    );
+    return json({ success: false, message: "Internal Server Error" }, 400, origin);
   } finally {
     client.release();
   }
 }
 
 export async function DELETE(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    if (auth.error)return withCors(auth.error, origin);
     
-    if (!["admin", "super_admin"].includes(auth.role)) {
-      return NextResponse.json(
-        { success: false, message: "Forbidden - admin only" },
-        { status: 403 }
-      );
-    }
+    if (!["admin", "super_admin"].includes(auth.role))
+      return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
     
     const staff_id = auth.staff_id;
 
@@ -627,47 +553,36 @@ export async function DELETE(req) {
       [staff_id]
     );
 
-    if (!adminRows.length) {
-      return NextResponse.json(
-        { success: false, message: "admin not found" },
-        { status: 404 }
-      );
-    }
+    if (!adminRows.length)
+      return json({ success: false, message: "admin not found" }, 404, origin);
 
     // 2. Get id params
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    const idParam = searchParams.get("id");
+    const id = Number(idParam);
 
-    if (!id || isNaN(id)) {
-      return NextResponse.json(
-        { success: false, message: "valid id is required" },
-        { status: 400 }
-      );
-    }
+    if (!id || isNaN(id))
+      return json({ success: false, message: "valid id is required" }, 400, origin);
 
     const adminSectionId = adminRows[0].section_id;
 
-    if (adminSectionId !== id) {
-      return NextResponse.json(
-        { success: false, message: "you are not admin of this section" },
-        { status: 403 }
-      );
-    }
+    if (adminSectionId !== id)
+      return json({ success: false, message: "you are not admin of this section" }, 403, origin);
 
     await client.query("BEGIN");
 
     // 3. Soft delete
     const { rowCount } = await client.query(
-      `UPDATE section SET is_deleted=true WHERE id=$1`,
+      `UPDATE section
+      SET is_deleted=true
+      WHERE id=$1
+      AND is_deleted=false`,
       [id]
     );
 
     if (!rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "Not found" },
-        { status: 404 }
-      );
+      return json({ success: false, message: "Not found" }, 404, origin);
     }
 
     // 4. INSERT log
@@ -679,15 +594,12 @@ export async function DELETE(req) {
     );
 
     await client.query("COMMIT");
-    return NextResponse.json({ 
-      success: true,
-      message: "deleted" 
-    });
+    return json({ success: true, message: "deleted" }, 200, origin);
   } catch {
     try {
       await client.query("ROLLBACK");
     } catch {}
-    return NextResponse.json({ success: false, message: "Error" }, { status: 500 });
+    return json({ success: false, message: "Error" }, 500, origin);
   } finally {
     client.release();
   }

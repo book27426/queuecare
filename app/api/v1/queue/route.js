@@ -5,6 +5,13 @@ import crypto from "crypto";
 
 import { withCors, getCorsHeaders } from "@/lib/cors";
 
+function json(data, status, origin) {
+  return withCors(
+    NextResponse.json(data, { status }),
+    origin
+  );
+}
+
 export async function OPTIONS(req) {
   const origin = req.headers.get("origin");
 
@@ -15,6 +22,7 @@ export async function OPTIONS(req) {
 }
 
 export async function POST(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
@@ -113,13 +121,13 @@ export async function POST(req) {
       response.cookies.set("guest_token", guest_token, {
         httpOnly: true,
         secure: true,
-        sameSite: "strict",
+        sameSite: "none",
         maxAge: 60 * 60 * 24 * 30, // 30 days,
         path: "/",
       });
     }
 
-    return response;
+    return withCors(response, origin);
     
   } catch (err) {
     try {
@@ -137,12 +145,11 @@ export async function POST(req) {
 };
 
 export async function GET(req) {
+  const origin = req.headers.get("origin");
   try {
-      
     const guest_token  = req.cookies.get("guest_token")?.value;
 
     const staffAuth = await verifyStaff(req);
-
     // 🧑‍💼 STAFF VIEW
     if (!staffAuth.error) {
       const { section_id } = staffAuth;
@@ -248,6 +255,7 @@ export async function GET(req) {
 }
 
 export async function PUT(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {

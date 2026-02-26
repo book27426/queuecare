@@ -5,6 +5,13 @@ import crypto from "crypto";
 
 import { withCors, getCorsHeaders } from "@/lib/cors";
 
+function json(data, status, origin) {
+  return withCors(
+    NextResponse.json(data, { status }),
+    origin
+  );
+}
+
 export async function OPTIONS(req) {
   const origin = req.headers.get("origin");
 
@@ -15,31 +22,25 @@ export async function OPTIONS(req) {
 }
 
 export async function PUT(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
     // 2. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    if (auth.error)return withCors(auth.error, origin);
 
     if (!["admin", "super_admin"].includes(auth.role)) {
-      return NextResponse.json(
-        { success: false, message: "Admin only" },
-        { status: 403 }
-      );
+      return json( { success: false, message: "Admin only" }, 403, origin);
     }
     
     const staff_id = auth.staff_id;
     // 1️. Get section id
     const { searchParams} = new URL(req.url);
-    const sectionId = searchParams.get("id");
+    const idParam = searchParams.get("id");
+    const sectionId = Number(idParam);
 
-    if (!sectionId) {
-      return NextResponse.json(
-        { success: false, message: "section_id is required" },
-        { status: 400 }
-      );
-    }
+    if (!sectionId) return json({ success: false, message: "section_id is required" }, 400, origin);
 
     const { rows: adminRows } = await client.query(
       `SELECT section_id
@@ -49,31 +50,20 @@ export async function PUT(req) {
       [staff_id]
     );
 
-    if (!adminRows.length) {
-      return NextResponse.json(
-        { success: false, message: "admin not found" },
-        { status: 404 }
-      );
-    }
+    if (!adminRows.length)
+      return json({ success: false, message: "admin not found" }, 404, origin);
 
     const adminSectionId = adminRows[0].section_id;
 
-    if (adminSectionId != sectionId) {
-      return NextResponse.json(
-        { success: false, message: "you are not admin of this section" },
-        { status: 403 }
-      );
-    }
+    if (adminSectionId !== sectionId)
+      return json({ success: false, message: "you are not admin of this section" }, 403, origin);
 
     // 2. Get request body
     const body = await req.json();
     const expire_minutes = body?.expire_minutes ?? 30;
 
     if (expire_minutes <= 0) {
-      return NextResponse.json(
-        { success: false, essage: "expire_minutes must be positive" },
-        { status: 400 }
-      );
+      return json({ success: false, message: "expire_minutes must be positive" }, 400, origin);
     }
 
     const expiresAt = new Date(Date.now() + expire_minutes * 60000);
@@ -95,10 +85,7 @@ export async function PUT(req) {
 
     if (!result.rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "Section not found" },
-        { status: 404 }
-      );
+      return json({ success: false, message: "Section not found" }, 404, origin);
     }
 
     await client.query(
@@ -109,7 +96,7 @@ export async function PUT(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true, data: {invite_code:inviteCode}}, { status: 200 });
+    return json({ success: true, data: {invite_code:inviteCode}}, 200, origin);
 
   } catch (err) {
     try {
@@ -117,10 +104,7 @@ export async function PUT(req) {
     } catch {}
 
     console.error(err);
-    return NextResponse.json(
-      { success: false, message: "internal server error" },
-      { status: 500 }
-    );
+    return json({ success: false, message: "internal server error" }, 500, origin);
   } finally {
     client.release();
   }

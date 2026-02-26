@@ -153,7 +153,7 @@ export async function POST(req) {
     response.cookies.set("user_token", token, {
       httpOnly: true,
       secure: true,
-      sameSite: "strict",
+      sameSite: "none",
       maxAge: 60 * 60 * 24 * 30, // 30 days
       path: "/",
     });
@@ -161,7 +161,7 @@ export async function POST(req) {
     response.cookies.set("otp_ticket", "", {
       httpOnly: true,
       secure: true,
-      sameSite: "strict",
+      sameSite: "none",
       maxAge: 0,
       path: "/",
     });
@@ -169,7 +169,7 @@ export async function POST(req) {
     response.cookies.set("guest_token", "", {
       httpOnly: true,
       secure: true,
-      sameSite: "strict",
+      sameSite: "none",
       maxAge: 0,
       path: "/",
     });
@@ -408,7 +408,7 @@ export async function PUT(req) {
     response.cookies.set("user_token", token, {
       httpOnly: true,
       secure: true,
-      sameSite: "strict",
+      sameSite: "none",
       maxAge: 60 * 60 * 24 * 30, // 30 days
       path: "/",
     });
@@ -416,7 +416,7 @@ export async function PUT(req) {
     response.cookies.set("otp_ticket", "", {
       httpOnly: true,
       secure: true,
-      sameSite: "strict",
+      sameSite: "none",
       maxAge: 0,
       path: "/",
     });
@@ -458,7 +458,7 @@ export async function DELETE(req) {
   response.cookies.set("user_token", "", {
     httpOnly: true,
     secure: true,
-    sameSite: "strict",
+    sameSite: "none",
     maxAge: 0,
     path: "/",
   });

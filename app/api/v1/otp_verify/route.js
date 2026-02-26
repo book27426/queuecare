@@ -4,6 +4,13 @@ import crypto from "crypto";
 
 import { withCors, getCorsHeaders } from "@/lib/cors";
 
+function json(data, status, origin) {
+  return withCors(
+    NextResponse.json(data, { status }),
+    origin
+  );
+}
+
 export async function OPTIONS(req) {
   const origin = req.headers.get("origin");
 
@@ -14,17 +21,14 @@ export async function OPTIONS(req) {
 }
 
 export async function POST(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
     const { phone_num } = await req.json();
 
-    if (!phone_num || phone_num.trim() === "") {
-      return NextResponse.json(
-        { success: false, message: "phone number required" },
-        { status: 400 }
-      );
-    }
+    if (!phone_num || phone_num.trim() === "")
+      return json({ success: false, message: "phone number required" }, 400, origin);
 
     const normalizedPhone = phone_num.trim();
 
@@ -64,19 +68,18 @@ export async function POST(req) {
     response.cookies.set("otp_ticket", ticket, {
       httpOnly: true,
       secure: true,
-      sameSite: "strict",
+      sameSite: "none",
       maxAge: 3 * 60,
       path: "/",
     });
 
-    return response
+    return withCors(response, origin);
 
   } catch (err) {
-    await client.query("ROLLBACK");
-    return NextResponse.json(
-      { success: false, message: "Internal Server Error" },
-      { status: 500 }
-    );
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    return json({ success: false, message: "Internal Server Error" }, 500, origin);
   } finally {
     client.release();
   }
