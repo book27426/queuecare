@@ -3,133 +3,132 @@ import { db } from "@/lib/db";
 import { verifyStaff } from "@/lib/auth";
 import admin from "@/lib/firebaseAdmin";
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://queuecare-beige.vercel.app",
-];
-
-function getCorsHeaders(origin) {
-  if (allowedOrigins.includes(origin)) {
-    return {
-      "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "Access-Control-Allow-Credentials": "true",
-    };
-  }
-  return {};
-}
+import { withCors, getCorsHeaders } from "@/lib/cors";
 
 export async function OPTIONS(req) {
   const origin = req.headers.get("origin");
+
   return new Response(null, {
+    status: 200,
     headers: getCorsHeaders(origin),
   });
 }
 
 export async function POST(req) {
-  const authHeader = req.headers.get("authorization");
-
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json(
-      { success: false, message: "Unauthorized" },
-      { status: 401 }
-    );
-  }
-
-  const idToken = authHeader.split("Bearer ")[1];
-
-  let decoded;
+  const origin = req.headers.get("origin");
 
   try {
-    decoded = await admin.auth().verifyIdToken(idToken);
-  } catch (err) {
-    return NextResponse.json(
-      { success: false, message: "Invalid token" },
-      { status: 401 }
-    );
-  }
+    const authHeader = req.headers.get("authorization");
 
-  const { uid, email, name } = decoded;
-  const [first_name, ...rest] = (name || "").split(" ");
-  const last_name = rest.join(" ");
-  const role = "staff";
-
-  const client = await db.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    const existing = await client.query(
-      `SELECT id, is_deleted FROM staff WHERE uid=$1`,
-      [uid]
-    );
-
-    let result;
-    let statusCode = 200;
-
-    if (existing.rows.length > 0) {
-      const staff = existing.rows[0];
-
-      if (staff.is_deleted) {
-        result = await client.query(
-          `UPDATE staff
-           SET is_deleted=false
-           WHERE uid=$1
-           RETURNING *`,
-          [uid]
-        );
-      } else {
-        result = await client.query(
-          `SELECT * FROM staff WHERE uid=$1`,
-          [uid]
-        );
-      }
-
-    } else {
-      result = await client.query(
-        `INSERT INTO staff (role, first_name, last_name, uid, email)
-         VALUES ($1,$2,$3,$4,$5)
-         RETURNING *`,
-        [role, first_name, last_name, uid, email]
+    if (!authHeader?.startsWith("Bearer ")) {
+      const response = NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
       );
-
-      statusCode = 201;
+      return withCors(response, origin);
     }
 
-    await client.query("COMMIT");
+    const idToken = authHeader.split("Bearer ")[1];
 
-    const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
+    let decoded;
 
-    const sessionCookie = await admin
-      .auth()
-      .createSessionCookie(idToken, { expiresIn });
+    try {
+      decoded = await admin.auth().verifyIdToken(idToken);
+    } catch (err) {
+      const response = NextResponse.json(
+        { success: false, message: "Invalid token" },
+        { status: 401 }
+      );
+      return withCors(response, origin);
+    }
 
+    const { uid, email, name } = decoded;
+    const [first_name, ...rest] = (name || "").split(" ");
+    const last_name = rest.join(" ");
+    const role = "staff";
+
+    const client = await db.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const existing = await client.query(
+        `SELECT id, is_deleted FROM staff WHERE uid=$1`,
+        [uid]
+      );
+
+      let result;
+      let statusCode = 200;
+
+      if (existing.rows.length > 0) {
+        const staff = existing.rows[0];
+
+        if (staff.is_deleted) {
+          result = await client.query(
+            `UPDATE staff SET is_deleted=false WHERE uid=$1 RETURNING *`,
+            [uid]
+          );
+        } else {
+          result = await client.query(
+            `SELECT * FROM staff WHERE uid=$1`,
+            [uid]
+          );
+        }
+      } else {
+        result = await client.query(
+          `INSERT INTO staff (role, first_name, last_name, uid, email)
+           VALUES ($1,$2,$3,$4,$5)
+           RETURNING *`,
+          [role, first_name, last_name, uid, email]
+        );
+
+        statusCode = 201;
+      }
+
+      await client.query("COMMIT");
+
+      const expiresIn = 60 * 60 * 24 * 5 * 1000;
+
+      const sessionCookie = await admin
+        .auth()
+        .createSessionCookie(idToken, { expiresIn });
+
+      const response = NextResponse.json(
+        { success: true, data: result.rows[0] },
+        { status: statusCode }
+      );
+
+      response.cookies.set("session", sessionCookie, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        maxAge: expiresIn / 1000,
+        path: "/",
+      });
+
+      return withCors(response, origin);
+
+    } catch (err) {
+      await client.query("ROLLBACK");
+
+      const response = NextResponse.json(
+        { success: false, message: "error creating staff" },
+        { status: 500 }
+      );
+
+      return withCors(response, origin);
+
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
     const response = NextResponse.json(
-      { success: true, data: result.rows[0] },
-      { status: statusCode }
-    );
-
-    response.cookies.set("session", sessionCookie, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-      maxAge: expiresIn / 1000,
-      path: "/",
-    });
-
-    return response;
-
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error(err);
-
-    return NextResponse.json(
-      { success: false, message: "error creating staff" },
+      { message: "Internal Server Error" },
       { status: 500 }
     );
-  } finally {
-    client.release();
+
+    return withCors(response, origin);
   }
 }
 
