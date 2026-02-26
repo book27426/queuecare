@@ -18,7 +18,7 @@ export async function POST(req) {
   const origin = req.headers.get("origin");
   const client = await db.connect();
 
-  // try {
+  try {
     const { otp } = await req.json();
 
     const guest_token  = req.cookies.get("guest_token")?.value;
@@ -177,19 +177,19 @@ export async function POST(req) {
     
     return withCors(response, origin);
 
-  // } catch (err) {
-  //   try {
-  //     await client.query("ROLLBACK");
-  //   } catch {}
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
 
-  //   const response = NextResponse.json(
-  //     { success: false, message: "Internal Server Error" },
-  //     { status: 500 }
-  //   );
-  //   return withCors(response, origin);
-  // } finally {
-  //   client.release();
-  // }
+    const response = NextResponse.json(
+      { success: false, message: "Internal Server Error" },
+      { status: 500 }
+    );
+    return withCors(response, origin);
+  } finally {
+    client.release();
+  }
 }
 
 export async function GET(req) {
