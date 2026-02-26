@@ -28,7 +28,7 @@ export async function POST(req) {
 
     if (!ticket || !otp) {
       const response = NextResponse.json(
-        { success: false, message: "Invalid session" },
+        { success: false, message: "Invalid ticket or otp" },
         { status: 400 }
       );
       return withCors(response, origin);
