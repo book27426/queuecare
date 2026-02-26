@@ -3,15 +3,15 @@ import { db } from "@/lib/db";
 import { verifyStaff, verifyUser } from "@/lib/auth";
 import crypto from "crypto";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://localhost:3000",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Access-Control-Allow-Credentials": "true",
-};
+import { withCors, getCorsHeaders } from "@/lib/cors";
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+export async function OPTIONS(req) {
+  const origin = req.headers.get("origin");
+
+  return new Response(null, {
+    status: 200,
+    headers: getCorsHeaders(origin),
+  });
 }
 
 export async function POST(req) {

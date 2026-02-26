@@ -3,18 +3,19 @@ import { db } from "@/lib/db";
 import { verifyStaff, verifyUser } from "@/lib/auth";
 import crypto from "crypto";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://localhost:3000",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Access-Control-Allow-Credentials": "true",
-};
+import { withCors, getCorsHeaders } from "@/lib/cors";
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+export async function OPTIONS(req) {
+  const origin = req.headers.get("origin");
+
+  return new Response(null, {
+    status: 200,
+    headers: getCorsHeaders(origin),
+  });
 }
 
 export async function POST(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
@@ -25,10 +26,11 @@ export async function POST(req) {
     const ticket = req.cookies.get("otp_ticket")?.value;
 
     if (!ticket || !otp) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Invalid session" },
         { status: 400 }
       );
+      return withCors(response, origin);
     }
 
     await client.query("BEGIN");
@@ -44,10 +46,11 @@ export async function POST(req) {
 
     if (!rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Invalid or expired OTP" },
         { status: 400 }
       );
+      return withCors(response, origin);
     }
 
     const otpRow = rows[0];
@@ -55,10 +58,11 @@ export async function POST(req) {
     // Check attempt limit
     if (otpRow.attempt >= 5) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Too many attempts" },
         { status: 403 }
       );
+      return withCors(response, origin);
     }
 
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
@@ -73,10 +77,11 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Invalid OTP" },
         { status: 400 }
       );
+      return withCors(response, origin);
     }
 
     const phone_num = otpRow.phone_num;
@@ -169,23 +174,25 @@ export async function POST(req) {
       path: "/",
     });
     
-    return response;
+    return withCors(response, origin);
 
   } catch (err) {
     try {
       await client.query("ROLLBACK");
     } catch {}
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
+    return withCors(response, origin);
   } finally {
     client.release();
   }
 }
 
 export async function GET(req) {
+  const origin = req.headers.get("origin");
   try {
     // 1. Get id params
     const { searchParams } = new URL(req.url);
@@ -194,12 +201,16 @@ export async function GET(req) {
     if (!id){
       // 2.1. verifyUser
       const auth = await verifyUser(req);
-      if (auth.error) return auth.error;
+      if (auth.error) {
+        return withCors(auth.error, origin);
+      }
       id = auth.user_id
     }else{
       // 2.2. verifyStaff
       const auth = await verifyStaff(req);
-      if (auth.error) return auth.error;
+      if (auth.error) {
+        return withCors(auth.error, origin);
+      }
     }
 
     // 3. Select users
@@ -208,47 +219,55 @@ export async function GET(req) {
       [id]
     );
 
-    if (!rows.length)
-      return NextResponse.json({ success: false, message: "not found" }, { status: 404 });
+    if (!rows.length){
+      const response = NextResponse.json({ success: false, message: "not found" }, { status: 404 });
+      return withCors(response, origin);
+    }
 
-    return NextResponse.json({success: true, "data":rows[0]});
+    const response = NextResponse.json({success: true, "data":rows[0]});
+    return withCors(response, origin);
 
   } catch {
-    return NextResponse.json(
+    const response = NextResponse.json(
       { success: false, message: "Unauthorized" },
       { status: 401 }
     );
+    return withCors(response, origin);
   }
 }
 
 export async function PUT(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
     const { otp } = await req.json();
 
     if (!otp || typeof otp !== "string") {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "OTP is required" },
         { status: 400 }
       );
+      return withCors(response, origin);
     }
 
     const ticket = req.cookies.get("otp_ticket")?.value;
 
     if (!ticket) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "ticket required" },
         { status: 400 }
       );
+      return withCors(response, origin);
     }
 
     const userAuth = await verifyUser(req);
     if (userAuth.error) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Unauthorized" },
         { status: 401 }
       );
+      return withCors(response, origin);
     }
 
     const { user_id } = userAuth;
@@ -266,10 +285,11 @@ export async function PUT(req) {
 
     if (!otpResult.rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Invalid or expired OTP" },
         { status: 400 }
       );
+      return withCors(response, origin);
     }
 
     const otpRow = otpResult.rows[0];
@@ -277,10 +297,11 @@ export async function PUT(req) {
     // Check attempt limit
     if (otpRow.attempt >= 5) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Too many attempts" },
         { status: 403 }
       );
+      return withCors(response, origin);
     }
 
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
@@ -295,10 +316,11 @@ export async function PUT(req) {
 
       await client.query("COMMIT");
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Invalid OTP" },
         { status: 400 }
       );
+      return withCors(response, origin);
     }
 
     const phone_num = otpRow.phone_num;
@@ -311,10 +333,11 @@ export async function PUT(req) {
 
     if (phoneExists.rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "Phone already in use" },
         { status: 400 }
       );
+      return withCors(response, origin);
     }
 
     // 3️⃣ Get old phone (lock user row)
@@ -325,10 +348,11 @@ export async function PUT(req) {
 
     if (!oldUser.rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
+      const response = NextResponse.json(
         { success: false, message: "User not found" },
         { status: 404 }
       );
+      return withCors(response, origin);
     }
 
     const oldPhone = oldUser.rows[0].phone_num;
@@ -397,23 +421,27 @@ export async function PUT(req) {
       path: "/",
     });
 
-    return response
+    return withCors(response, origin);
 
   } catch (err) {
     try { await client.query("ROLLBACK"); } catch {}
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
+    return withCors(response, origin);
   } finally {
     client.release();
   }
 }
 
 export async function DELETE(req) {
+  const origin = req.headers.get("origin");
   const auth = await verifyUser(req);
-  if (auth.error) return auth.error;
+  if (auth.error) {
+    return withCors(auth.error, origin);
+  }
 
   const { token_hash } = auth;
 
@@ -435,5 +463,5 @@ export async function DELETE(req) {
     path: "/",
   });
 
-  return response;
+  return withCors(response, origin);
 }

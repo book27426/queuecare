@@ -14,6 +14,13 @@ export async function OPTIONS(req) {
   });
 }
 
+function json(data, status, origin) {
+  return withCors(
+    NextResponse.json(data, { status }),
+    origin
+  );
+}
+
 export async function POST(req) {
   const origin = req.headers.get("origin");
 
@@ -21,11 +28,7 @@ export async function POST(req) {
     const authHeader = req.headers.get("authorization");
 
     if (!authHeader?.startsWith("Bearer ")) {
-      const response = NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-      return withCors(response, origin);
+      return json({ success: false, message: "Unauthorized" }, 401, origin);
     }
 
     const idToken = authHeader.split("Bearer ")[1];
@@ -35,11 +38,7 @@ export async function POST(req) {
     try {
       decoded = await admin.auth().verifyIdToken(idToken);
     } catch (err) {
-      const response = NextResponse.json(
-        { success: false, message: "Invalid token" },
-        { status: 401 }
-      );
-      return withCors(response, origin);
+      return json({ success: false, message: "Invalid token" }, 401, origin);
     }
 
     const { uid, email, name } = decoded;
@@ -101,7 +100,7 @@ export async function POST(req) {
       response.cookies.set("session", sessionCookie, {
         httpOnly: true,
         secure: true,
-        sameSite: "strict",
+        sameSite: "none",
         maxAge: expiresIn / 1000,
         path: "/",
       });
@@ -111,42 +110,34 @@ export async function POST(req) {
     } catch (err) {
       await client.query("ROLLBACK");
 
-      const response = NextResponse.json(
-        { success: false, message: "error creating staff" },
-        { status: 500 }
-      );
-
-      return withCors(response, origin);
+      return json({ success: false, message: "error creating staff" }, 500, origin);
 
     } finally {
       client.release();
     }
 
   } catch (error) {
-    const response = NextResponse.json(
-      { message: "Internal Server Error" },
-      { status: 500 }
-    );
-
-    return withCors(response, origin);
+    return json({ message: "Internal Server Error" }, 500, origin);
   }
 }
 
 export async function GET(req) {
+  const origin = req.headers.get("origin");
+  
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    if (auth.error) {
+      return withCors(auth.error, origin);
+    }
 
     // 2. Get id params
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json(
-        { "success": false, message: "id is required" },
-        { status: 400 }
-      );
+      return json(
+        { "success": false, message: "id is required" }, 400, origin);
     }
 
     const { rows } = await db.query(
@@ -156,30 +147,27 @@ export async function GET(req) {
     );
 
   if (!rows.length) {
-    return NextResponse.json(
-      { "success": false, message: "Not found" },
-      { status: 404 }
-    );
+    return json(
+      { "success": false, message: "Not found" }, 404, origin);
   }
 
-  return NextResponse.json(
-    { success: true, data: rows[0] },
-    { status: 200 }
-  );
+  return json(
+    { success: true, data: rows[0] }, 200, origin);
   } catch {
-    return NextResponse.json(
-      { "success": false, message: "error" },
-      { status: 500 }
-    );
+    return json({ "success": false, message: "error" }, 500, origin);
   }
 }
 
 export async function PUT(req) {
+  const origin = req.headers.get("origin");
+
   const client = await db.connect();
 
   try {
     const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    if (auth.error) {
+      return withCors(auth.error, origin);
+    }
 
     const { staff_id: authId, role: authRole } = auth;
 
@@ -189,10 +177,7 @@ export async function PUT(req) {
     // if no id provided → edit self
 
     if (!Number.isInteger(id)) {
-      return NextResponse.json(
-        { success: false, message: "valid id is required" },
-        { status: 400 }
-      );
+      return json({ success: false, message: "valid id is required" }, 400, origin);
     }
 
     const body = await req.json();
@@ -218,10 +203,7 @@ export async function PUT(req) {
 
         if (!rows.length) {
           await client.query("ROLLBACK");
-          return NextResponse.json(
-            { success: false, message: "invalid or expired invite code" },
-            { status: 400 }
-          );
+          return json({ success: false, message: "invalid or expired invite code" }, 400, origin);
         }
 
         const section_id = rows[0].id;
@@ -247,25 +229,19 @@ export async function PUT(req) {
 
         await client.query("COMMIT");
 
-        return NextResponse.json({ success: true, data: result.rows[0] });
+        return json({ success: true, data: result.rows[0] }, 200, origin);
       }
 
       // 2️⃣ Self profile update
       if (id !== authId) {
-        return NextResponse.json(
-          { success: false, message: "cannot modify other staff" },
-          { status: 403 }
-        );
+        return json({ success: false, message: "cannot modify other staff" }, 403, origin);
+
       }
 
       const { first_name, last_name } = body;
 
-      if (!first_name && !last_name) {
-        return NextResponse.json(
-          { success: false, message: "No fields to update" },
-          { status: 400 }
-        );
-      }
+      if (!first_name && !last_name)
+        return json({ success: false, message: "No fields to update" }, 400, origin);
 
       await client.query("BEGIN");
 
@@ -292,7 +268,7 @@ export async function PUT(req) {
 
       await client.query("COMMIT");
 
-      return NextResponse.json({ success: true, data: result.rows[0] });
+      return json({ success: true, data: result.rows[0] }, 200, origin);
     }
 
     // =================================================
@@ -307,10 +283,8 @@ export async function PUT(req) {
 
       if (!Number.isInteger(section_id)) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "invalid section_id" },
-          { status: 400 }
-        );
+        return json({ success: false, message: "invalid section_id" }, 400, origin);
+
       }
 
       const { rows: sectionRows } = await client.query(
@@ -323,10 +297,7 @@ export async function PUT(req) {
 
       if (!sectionRows.length) {
         await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, message: "section not found" },
-          { status: 404 }
-        );
+        return json({ success: false, message: "section not found" }, 404, origin);
       }
     }
   
@@ -337,17 +308,15 @@ export async function PUT(req) {
 
     if (!targetRows.length) {
       await client.query("ROLLBACK");
-      return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
+      return json({ success: false, message: "Not found" }, 404, origin);
     }
 
     const targetRole = targetRows[0].role;
 
     if (targetRole === "super_admin" && authRole !== "super_admin") {
       await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, message: "cannot modify super_admin" },
-        { status: 403 }
-      );
+      return json(
+        { success: false, message: "cannot modify super_admin" }, 403, origin);
     }
 
     const result = await client.query(
@@ -364,30 +333,29 @@ export async function PUT(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true, data: result.rows[0] });
-
+    return json({ success: true, data: result.rows[0] }, 200, origin);
   } catch (err) {
     console.error("Update staff error:", err);
     try { await client.query("ROLLBACK"); } catch {}
-    return NextResponse.json({ success: false, message: "error" }, { status: 500 });
+    return json({ success: false, message: "error" }, 500, origin);
   } finally {
     client.release();
   }
 }
 
 export async function DELETE(req) {
+  const origin = req.headers.get("origin");
   const client = await db.connect();
   
   try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) return auth.error;
+    if (auth.error) {
+      return withCors(auth.error, origin);
+    }
 
     if (!["admin", "super_admin"].includes(auth.role)) {
-      return NextResponse.json(
-        { "success": false, message: "admin only" },
-        { status: 403 }
-      );
+      return json({ "success": false, message: "admin only" }, 403, origin);
     }
     
     const staff_id = auth.staff_id;
@@ -397,10 +365,7 @@ export async function DELETE(req) {
     const id = searchParams.get("id");
 
     if (!id || isNaN(id)) {
-      return NextResponse.json(
-        { "success": false, message: "valid id is required" },
-        { status: 400 }
-      );
+      return json({ "success": false, message: "valid id is required" }, 400, origin);
     }
 
     await client.query("BEGIN");
@@ -413,10 +378,7 @@ export async function DELETE(req) {
 
     if (!rowCount) {
       await client.query("ROLLBACK");
-      return NextResponse.json(
-        { "success": false, message: "Not found" },
-        { status: 404 }
-      );
+      return json({ "success": false, message: "Not found" }, 404, origin);
     }
 
     // 4. Insert log
@@ -429,16 +391,13 @@ export async function DELETE(req) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({
-      success: true,
-      message: "deleted" 
-    });
+    return json({success: true, message: "deleted" }, 200, origin);
   } catch (err) {
     console.error("DELETE staff error:", err);
     try {
       await client.query("ROLLBACK");
     } catch {}
-    return NextResponse.json({ "success": false, message: "error" }, { status: 500 });
+    return json({ "success": false, message: "error" }, 500, origin);
   } finally {
     client.release();
   }
