@@ -61,7 +61,7 @@ export async function POST(req) {
     console.log("OTP:", otp);
 
     const response = NextResponse.json(
-      { success: true },
+      { success: true , message: otp},
       { status: 200 }
     );
 

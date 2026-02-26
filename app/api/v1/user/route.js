@@ -25,6 +25,7 @@ export async function POST(req) {
 
     const ticket = req.cookies.get("otp_ticket")?.value;
 
+
     if (!ticket || !otp) {
       const response = NextResponse.json(
         { success: false, message: "Invalid session" },
