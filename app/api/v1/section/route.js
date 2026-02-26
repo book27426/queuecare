@@ -205,7 +205,7 @@ export async function GET(req) {
         SELECT
           TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
           COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
-          COUNT(*) FILTER (WHERE status = 'complete') AS complete
+          COUNT(*) FILTER (WHERE status IN ('complete', 'transfer')) AS complete
         FROM queue
         WHERE section_id = $1
           AND created_at >= CURRENT_DATE
@@ -223,7 +223,7 @@ export async function GET(req) {
             AS avg_operation_minutes
         FROM queue
         WHERE section_id = $1
-          AND status = 'complete'
+          AND status IN ('complete', 'transfer')
           AND start_at IS NOT NULL
           AND end_at IS NOT NULL
           AND end_at >= CURRENT_DATE
@@ -236,7 +236,7 @@ export async function GET(req) {
         `
         SELECT
           COUNT(*) FILTER (WHERE status != 'cancel') AS total_new,
-          COUNT(*) FILTER (WHERE status = 'complete') AS total_complete
+          COUNT(*) FILTER (WHERE status IN ('complete', 'transfer')) AS total_complete
         FROM queue
         WHERE section_id = $1
           AND created_at >= CURRENT_DATE

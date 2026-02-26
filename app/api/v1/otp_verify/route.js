@@ -22,7 +22,6 @@ export async function OPTIONS(req) {
 
 export async function POST(req) {
   const origin = req.headers.get("origin");
-  const client = await db.connect();
 
   try {
     const { phone_num } = await req.json();
@@ -38,9 +37,7 @@ export async function POST(req) {
     const ticket = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 3 * 60 * 1000);
 
-    await client.query("BEGIN");
-
-    await client.query(
+    await db.query(
       `
       INSERT INTO phone_otp
       (phone_num, ticket, otp, expires_at, attempt, phone_verify)
@@ -55,8 +52,6 @@ export async function POST(req) {
       `,
       [normalizedPhone, ticket, hashedOtp, expiresAt]
     );
-
-    await client.query("COMMIT");
 
     console.log("OTP:", otp);
 
@@ -76,11 +71,6 @@ export async function POST(req) {
     return withCors(response, origin);
 
   } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
     return json({ success: false, message: "Internal Server Error" }, 500, origin);
-  } finally {
-    client.release();
   }
 }
