@@ -27,6 +27,8 @@ export async function POST(req) {
 
 
     if (!ticket || !otp) {
+      console.log(ticket)
+      console.log(otp)
       const response = NextResponse.json(
         { success: false, message: "Invalid ticket or otp" },
         { status: 400 }
