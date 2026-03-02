@@ -114,7 +114,7 @@ export async function GET(req) {
     const name = searchParams.get("name");
 
     /// 2.check User search
-    if (name) {
+    if (!id) {
 
       const { rows } = await db.query(
         `
@@ -138,9 +138,6 @@ export async function GET(req) {
     if (auth.error) return withCors(auth.error, origin);
 
     const { section_id: staffSectionId } = auth;
-
-    if (!id)
-      return json({ success: false, message: "id is required" }, 400, origin);
 
     const sectionId = Number(id);
 
