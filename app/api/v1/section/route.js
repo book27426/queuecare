@@ -140,7 +140,7 @@ export async function GET(req) {
           SELECT id, name
           FROM section
           WHERE name ILIKE '%' || $1 || '%'
-          AND is_deleted = false AND section_id = $2
+          AND is_deleted = false AND id = $2
           `,
           [searchName, section_id]
         );
