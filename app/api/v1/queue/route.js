@@ -66,7 +66,7 @@ export async function POST(req) {
        ORDER BY id DESC
        LIMIT 1`,
       [section_id]
-    );
+    );///
 
     if (lastQueue.rows.length > 0) {
       const lastNumber = parseInt(lastQueue.rows[0].number, 10);

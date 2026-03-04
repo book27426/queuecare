@@ -113,24 +113,44 @@ export async function GET(req) {
     const id = searchParams.get("id");
     const name = searchParams.get("name");
 
+    const searchName = name ?? "";
     /// 2.check User search
     if (!id) {
+      const auth = await verifyStaff(req);
+      if (auth.error){
+        const { rows } = await db.query(
+          `
+          SELECT id, name, wait_default, predict_time
+          FROM section
+          WHERE name ILIKE '%' || $1 || '%'
+          AND is_deleted = false AND depth_int = 0
+          `,
+          [searchName]
+        );
 
-      const { rows } = await db.query(
-        `
-        SELECT id, name, wait_default, predict_time
-        FROM section
-        WHERE name ILIKE '%' || $1 || '%'
-        AND is_deleted = false AND depth_int = 0
-        `,
-        [name]
-      );
+        return json({
+          success: true,
+          mode: "public-search",
+          data: rows
+        }, 200, origin);
+      }else{
+        const { section_id } = auth;
+        const { rows } = await db.query(
+          `
+          SELECT id, name, section_id
+          FROM staff
+          WHERE name ILIKE '%' || $1 || '%'
+          AND is_deleted = false AND section_id = $2
+          `,
+          [searchName, section_id]
+        );
 
-      return json({
-        success: true,
-        mode: "public-search",
-        data: rows
-      }, 200, origin);
+        return json({
+          success: true,
+          mode: "staff-search",
+          data: rows
+        }, 200, origin);
+      }
     }
 
     // 2. Verify staff
