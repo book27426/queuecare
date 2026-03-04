@@ -138,7 +138,7 @@ export async function GET(req) {
         const { rows } = await db.query(
           `
           SELECT id, name
-          FROM staff
+          FROM section
           WHERE name ILIKE '%' || $1 || '%'
           AND is_deleted = false AND section_id = $2
           `,
