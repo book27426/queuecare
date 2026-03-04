@@ -107,7 +107,7 @@ export async function POST(req) {
 
 export async function GET(req) {
   const origin = req.headers.get("origin");
-  try {
+  // try {
     // 1. Get id params
     const { searchParams} = new URL(req.url);
     const id = searchParams.get("id");
@@ -318,10 +318,10 @@ export async function GET(req) {
 
     return json({ success: false, message: "Unauthorized" }, 403, origin);
 
-  } catch (err) {
-    console.error("Get section error:", err);
-    return json({ success: false, message: "Internal server error" }, 500, origin);
-  }
+  // } catch (err) {
+  //   console.error("Get section error:", err);
+  //   return json({ success: false, message: "Internal server error" }, 500, origin);
+  // }
 }
 
 export async function PUT(req) {
