@@ -43,8 +43,7 @@ export async function POST(req) {
     const { uid, email, name } = decoded;
     const [first_name, ...rest] = (name || "").split(" ");
     const last_name = rest.join(" ");
-    const role = "staff";
-    let status = login
+    let status = "login";
     const client = await db.connect();
 
     try {
@@ -74,14 +73,14 @@ export async function POST(req) {
         }
       } else {
         result = await client.query(
-          `INSERT INTO staff (role, first_name, last_name, uid, email)
-           VALUES ($1,$2,$3,$4,$5)
-           RETURNING *`,
-          [role, first_name, last_name, uid, email]
+          `INSERT INTO staff (first_name, last_name, uid, email)
+          VALUES ($1,$2,$3,$4)
+          RETURNING *`,
+          [first_name, last_name, uid, email]
         );
 
         statusCode = 201;
-        status = create
+        status = "create";
       }
 
       await client.query("COMMIT");
@@ -139,7 +138,7 @@ export async function GET(req) {
     }
 
     const { rows } = await db.query(
-      `SELECT id, first_name, last_name, role, section_id, email FROM staff
+      `SELECT id, first_name, last_name, email FROM staff
       WHERE id=$1 AND is_deleted=false`,
       [id]
     );
@@ -204,12 +203,11 @@ export async function PUT(req) {
 
         const section_id = rows[0].id;
 
-        const result = await client.query(
-          `UPDATE staff
-           SET section_id=$1
-           WHERE id=$2
-           RETURNING *`,
-          [section_id, authId]
+        await client.query(
+          `INSERT INTO staff_role (role, staff_id, section_id)
+          VALUES ($1,$2,$3)
+          ON CONFLICT (staff_id, section_id, role) DO NOTHING`,
+          ["staff", authId, section_id]
         );
 
         await client.query(
@@ -298,8 +296,7 @@ export async function PUT(req) {
     }
   
     const { rows: targetRows } = await client.query(
-      `SELECT role FROM staff WHERE id=$1`,
-      [id]
+      `SELECT role FROM staff_role WHERE staff_id=$1`
     );
 
     if (!targetRows.length) {
@@ -319,12 +316,17 @@ export async function PUT(req) {
       `UPDATE staff
        SET
          first_name = COALESCE($1, first_name),
-         last_name  = COALESCE($2, last_name),
-         role       = COALESCE($3, role),
-         section_id = COALESCE($4, section_id)
+         last_name  = COALESCE($2, last_name)
        WHERE id=$5
        RETURNING *`,
       [first_name, last_name, role, section_id, id]
+    );
+
+    await client.query(
+      `UPDATE staff_role
+      SET role = COALESCE($1, role)
+      WHERE staff_id=$2 AND section_id=$3`,
+      [role, id, section_id]
     );
 
     await client.query("COMMIT");

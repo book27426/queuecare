@@ -37,7 +37,7 @@ export async function POST(req) {
     const {
       name,
       parent_id,
-      wait_default
+      wait_default //remove
     } = await req.json();
 
     if (!name)
