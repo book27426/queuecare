@@ -24,7 +24,7 @@ export async function POST(req) {
   const origin = req.headers.get("origin");
   const client = await db.connect();
 
-  // try {
+  try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error)return withCors(auth.error, origin);
@@ -92,235 +92,239 @@ export async function POST(req) {
 
     return json({ success: true, data: section.rows[0] }, 201, origin);
 
-  // } catch (err) {
-  //   try {
-  //     await client.query("ROLLBACK");
-  //   } catch {}
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
 
-  //   console.error(err);
-  //   return json({ success: false, message: "internal server error" }, 500, origin);
-  // } finally {
-  //   client.release();
-  // }
+    console.error(err);
+    return json({ success: false, message: "internal server error" }, 500, origin);
+  } finally {
+    client.release();
+  }
 }
 
 export async function GET(req) {
   const origin = req.headers.get("origin");
-  // try {
-    // 1. Get id params
-    const { searchParams} = new URL(req.url);
-    const id = searchParams.get("id");
-    const name = searchParams.get("name");
 
-    const searchName = name ?? "";
-    /// 2.check User search
-    if (!id) {
-      const auth = await verifyStaff(req);
-      if (auth.error){
-        const { rows } = await db.query(
-          `
-          SELECT id, name, wait_default, predict_time
-          FROM section
-          WHERE name ILIKE '%' || $1 || '%'
-          AND is_deleted = false AND depth_int = 0
-          `,
-          [searchName]
-        );
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  const name = searchParams.get("name");
 
-        return json({
-          success: true,
-          mode: "public-search",
-          data: rows
-        }, 200, origin);
-      }else{
-        const { section_id } = auth;
-        const { rows } = await db.query(
-          `
-          SELECT id, name
-          FROM section
-          WHERE name ILIKE '%' || $1 || '%'
-          AND is_deleted = false AND id = $2
-          `,
-          [searchName, section_id]
-        );
+  const searchName = name ?? "";
 
-        return json({
-          success: true,
-          mode: "staff-search",
-          data: rows
-        }, 200, origin);
-      }
-    }
+  // =================================================
+  // 🔎 SEARCH SECTION
+  // =================================================
+  if (!id) {
 
-    // 2. Verify staff
     const auth = await verifyStaff(req);
-    if (auth.error) return withCors(auth.error, origin);
 
-    const { section_id: staffSectionId } = auth;
+    // PUBLIC SEARCH
+    if (auth.error) {
 
-    const sectionId = Number(id);
-
-    if (!Number.isInteger(sectionId) || sectionId <= 0)
-      return json({ success: false, message: "valid id is required" }, 400, origin);
-
-    // 3. GET section
-    const { rows: sectionRows } = await db.query(
-      `SELECT * FROM section
-       WHERE id=$1 AND is_deleted=false`,
-      [sectionId]
-    );
-
-    if (!sectionRows.length) {
-      return json({ success: false, message: "Not found" }, 404, origin);
-    }
-
-    const section = sectionRows[0];
-
-    // ✅ CASE A: Staff belongs to THIS section
-    if (staffSectionId === sectionId) {
-      const { rows: subSections } = await db.query(
-        `SELECT * FROM section
-         WHERE parent_id = $1
-         AND is_deleted=false`,
-        [sectionId]
-      );
-
-      const { rows: queues } = await db.query(
-        `SELECT * FROM queue
-         WHERE section_id = $1
-         AND status='waiting'`,
-        [sectionId]
-      );
-
-      const { rows: sectionIdsRows } = await db.query(
+      const { rows } = await db.query(
         `
-        SELECT id
+        SELECT id, name, wait_default, predict_time
         FROM section
-        WHERE id = $1
-          OR parent_id = $1
+        WHERE name ILIKE '%' || $1 || '%'
+        AND is_deleted = false
+        AND depth_int = 0
         `,
-        [sectionId]
+        [searchName]
       );
-
-      const sectionIds = sectionIdsRows.map(row => row.id);
-
-      const { rows: staffs } = await db.query(
-        `
-        SELECT id, first_name, last_name
-        FROM staff
-        WHERE section_id = ANY($1)
-          AND is_deleted = false
-        ORDER BY first_name ASC
-        `,
-        [sectionIds]
-      );
-
-      // 1️⃣ Hourly breakdown
-      const { rows: hourlyRows } = await db.query(
-        `
-        SELECT
-          TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
-          COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
-          COUNT(*) FILTER (WHERE status IN ('complete', 'transfer')) AS complete
-        FROM queue
-        WHERE section_id = $1
-          AND created_at >= CURRENT_DATE
-        GROUP BY 1
-        ORDER BY 1
-        `,
-        [sectionId]
-      );
-
-      // 2️⃣ Average operation time
-      const { rows: avgRows } = await db.query(
-        `
-        SELECT
-          AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60)
-            AS avg_operation_minutes
-        FROM queue
-        WHERE section_id = $1
-          AND status IN ('complete', 'transfer')
-          AND start_at IS NOT NULL
-          AND end_at IS NOT NULL
-          AND end_at >= CURRENT_DATE
-        `,
-        [sectionId]
-      );
-
-      // 3️⃣ Totals
-      const { rows: totalRows } = await db.query(
-        `
-        SELECT
-          COUNT(*) FILTER (WHERE status != 'cancel') AS total_new,
-          COUNT(*) FILTER (WHERE status IN ('complete', 'transfer')) AS total_complete
-        FROM queue
-        WHERE section_id = $1
-          AND created_at >= CURRENT_DATE
-        `,
-        [sectionId]
-      );
-
-      const now = new Date();
-      const hoursPassed = Math.max(now.getHours() - 8, 1); // prevent divide by 0
-
-      const stats = {
-        est_new_queue_per_hour:
-          Number(totalRows[0].total_new) / hoursPassed,
-
-        est_complete_case_per_hour:
-          Number(totalRows[0].total_complete) / hoursPassed,
-
-        est_avg_operation_time_per_case_minutes:
-          Number(avgRows[0].avg_operation_minutes) || 0,
-
-        hourly_breakdown: hourlyRows,
-
-        last_updated: new Date().toISOString(),
-      };
 
       return json({
         success: true,
-        mode: "main-section",
-        section,
-        stats,
-        sub_sections: subSections,
-        queues,
-        staffs
+        mode: "public-search",
+        data: rows
       }, 200, origin);
     }
 
-    // ✅ CASE B: Staff belongs to SUBSECTION of requested section
-    const { rows: relation } = await db.query(
+    // STAFF SEARCH (their own sections)
+    const { roles } = auth;
+
+    const sectionIds = roles.map(r => r.section_id);
+
+    const { rows } = await db.query(
       `
-      SELECT 1
-      FROM section child
-      WHERE child.id = $1
-      AND child.parent_id = $2
+      SELECT id, name
+      FROM section
+      WHERE name ILIKE '%' || $1 || '%'
+      AND is_deleted = false
+      AND id = ANY($2)
       `,
-      [staffSectionId, sectionId]
+      [searchName, sectionIds]
     );
 
-    if (relation.length) {
-      const { rows: ownSection } = await db.query(
-        `SELECT * FROM section
-         WHERE id=$1 AND is_deleted=false`,
-        [staffSectionId]
-      );
+    return json({
+      success: true,
+      mode: "staff-search",
+      data: rows
+    }, 200, origin);
+  }
 
-      return json({
-        success: true,
-        mode: "sub-section-staff",
-        parent_section: section,
-        own_section: ownSection[0]
-      }, 200, origin);
-    }
+  // =================================================
+  // 📌 SECTION DETAIL
+  // =================================================
 
-    return json({ success: false, message: "Unauthorized" }, 403, origin);
+  const sectionId = Number(id);
 
-  // } catch (err) {
-  //   console.error("Get section error:", err);
-  //   return json({ success: false, message: "Internal server error" }, 500, origin);
-  // }
+  if (!Number.isInteger(sectionId) || sectionId <= 0) {
+    return json({ success: false, message: "valid id is required" }, 400, origin);
+  }
+
+  // verify access to this section
+  const auth = await verifyStaff(req, sectionId);
+  if (auth.error) return withCors(auth.error, origin);
+
+  const { staff_id, isSuperAdmin } = auth;
+
+  // =================================================
+  // GET SECTION
+  // =================================================
+
+  const { rows: sectionRows } = await db.query(
+    `
+    SELECT *
+    FROM section
+    WHERE id=$1
+    AND is_deleted=false
+    `,
+    [sectionId]
+  );
+
+  if (!sectionRows.length) {
+    return json({ success: false, message: "Not found" }, 404, origin);
+  }
+
+  const section = sectionRows[0];
+
+  // =================================================
+  // SUB SECTIONS
+  // =================================================
+
+  const { rows: subSections } = await db.query(
+    `
+    SELECT *
+    FROM section
+    WHERE parent_id = $1
+    AND is_deleted=false
+    `,
+    [sectionId]
+  );
+
+  // =================================================
+  // QUEUES
+  // =================================================
+
+  const { rows: queues } = await db.query(
+    `
+    SELECT *
+    FROM queue
+    WHERE section_id = $1
+    AND status='waiting'
+    `,
+    [sectionId]
+  );
+
+  // =================================================
+  // STAFF
+  // =================================================
+
+  const { rows: staffs } = await db.query(
+    `
+    SELECT s.id, s.first_name, s.last_name
+    FROM staff s
+    JOIN staff_role sr ON sr.staff_id = s.id
+    WHERE sr.section_id = $1
+    AND s.is_deleted = false
+    ORDER BY s.first_name ASC
+    `,
+    [sectionId]
+  );
+
+  // =================================================
+  // HOURLY STATS
+  // =================================================
+
+  const { rows: hourlyRows } = await db.query(
+    `
+    SELECT
+      TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
+      COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
+      COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS complete
+    FROM queue
+    WHERE section_id = $1
+    AND created_at >= CURRENT_DATE
+    GROUP BY 1
+    ORDER BY 1
+    `,
+    [sectionId]
+  );
+
+  // =================================================
+  // AVG OPERATION
+  // =================================================
+
+  const { rows: avgRows } = await db.query(
+    `
+    SELECT
+      AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60)
+      AS avg_operation_minutes
+    FROM queue
+    WHERE section_id = $1
+    AND status IN ('complete','transfer')
+    AND start_at IS NOT NULL
+    AND end_at IS NOT NULL
+    AND end_at >= CURRENT_DATE
+    `,
+    [sectionId]
+  );
+
+  // =================================================
+  // TOTALS
+  // =================================================
+
+  const { rows: totalRows } = await db.query(
+    `
+    SELECT
+      COUNT(*) FILTER (WHERE status != 'cancel') AS total_new,
+      COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS total_complete
+    FROM queue
+    WHERE section_id = $1
+    AND created_at >= CURRENT_DATE
+    `,
+    [sectionId]
+  );
+
+  const now = new Date();
+  const hoursPassed = Math.max(now.getHours() - 8, 1);
+
+  const stats = {
+    est_new_queue_per_hour:
+      Number(totalRows[0].total_new) / hoursPassed,
+
+    est_complete_case_per_hour:
+      Number(totalRows[0].total_complete) / hoursPassed,
+
+    est_avg_operation_time_per_case_minutes:
+      Number(avgRows[0].avg_operation_minutes) || 0,
+
+    hourly_breakdown: hourlyRows,
+
+    last_updated: new Date().toISOString()
+  };
+
+  return json({
+    success: true,
+    mode: "section-detail",
+    section,
+    stats,
+    sub_sections: subSections,
+    queues,
+    staffs
+  }, 200, origin);
 }
 
 export async function PUT(req) {
