@@ -70,10 +70,7 @@ export async function POST(req) {
 
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
-    if (!crypto.timingSafeEqual(
-      Buffer.from(hashedOtp),
-      Buffer.from(otpRow.otp)
-    )) {
+    if (hashedOtp !== otpRow.otp) {
       await client.query(
         `UPDATE phone_otp
          SET attempt = attempt + 1
