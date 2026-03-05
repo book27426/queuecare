@@ -44,7 +44,7 @@ export async function POST(req) {
     const [first_name, ...rest] = (name || "").split(" ");
     const last_name = rest.join(" ");
     const role = "staff";
-
+    let status = login
     const client = await db.connect();
 
     try {
@@ -81,6 +81,7 @@ export async function POST(req) {
         );
 
         statusCode = 201;
+        status = create
       }
 
       await client.query("COMMIT");
@@ -92,7 +93,7 @@ export async function POST(req) {
         .createSessionCookie(idToken, { expiresIn });
 
       const response = NextResponse.json(
-        { success: true, data: result.rows[0] },
+        { success: true, status: status, data: result.rows[0] },
         { status: statusCode }
       );
 
