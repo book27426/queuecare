@@ -24,30 +24,22 @@ export async function POST(req) {
   const origin = req.headers.get("origin");
   const client = await db.connect();
 
-  try {
+  // try {
     // 1. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error)return withCors(auth.error, origin);
     
-    if (!["admin", "super_admin"].includes(auth.role))
-      return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
-
     const staff_id = auth.staff_id;
     // 2. Get request body
     const {
       name,
-      parent_id,
-      wait_default //remove
+      parent_id
     } = await req.json();
 
     if (!name)
       return json({ success: false, message: "name is required" }, 400, origin);
 
-    const wait = Number(wait_default ?? 5);
     const parent = parent_id ? Number(parent_id) : null;
-
-    if (isNaN(wait) || wait < 0)
-      return json({ success: false, message: "invalid numeric values" }, 400, origin);
 
     await client.query("BEGIN");
 
@@ -55,7 +47,7 @@ export async function POST(req) {
 
     if (parent) {
       const parentCheck = await client.query(
-        `SELECT id FROM section WHERE id=$1`,
+        `SELECT id, depth_int FROM section WHERE id=$1`,
         [parent]
       );
 
@@ -76,10 +68,17 @@ export async function POST(req) {
     // 3. Insert section
     const section = await client.query(
       `INSERT INTO section 
-        (name, parent_id, wait_default, predict_time, depth_int)
-       VALUES ($1,$2,$3,$4,$5)
+        (name, parent_id, depth_int)
+       VALUES ($1,$2,$3)
        RETURNING *`,
-      [name, parent, wait, wait, depth]
+      [name, parent, depth]
+    );
+
+    await client.query(
+      `INSERT INTO staff_role 
+        (role, staff_id, section_id)
+       VALUES ($1,$2,$3)`,
+      ["admin", staff_id, section.rows[0].id]
     );
 
     const detail = `Created section ${section.rows[0].id} (${name})`;
@@ -93,16 +92,16 @@ export async function POST(req) {
 
     return json({ success: true, data: section.rows[0] }, 201, origin);
 
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
+  // } catch (err) {
+  //   try {
+  //     await client.query("ROLLBACK");
+  //   } catch {}
 
-    console.error(err);
-    return json({ success: false, message: "internal server error" }, 500, origin);
-  } finally {
-    client.release();
-  }
+  //   console.error(err);
+  //   return json({ success: false, message: "internal server error" }, 500, origin);
+  // } finally {
+  //   client.release();
+  // }
 }
 
 export async function GET(req) {
