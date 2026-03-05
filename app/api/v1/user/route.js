@@ -15,180 +15,291 @@ export async function OPTIONS(req) {
 }
 
 export async function POST(req) {
+  // const origin = req.headers.get("origin");
+  // const client = await db.connect();
+
+  // try {
+  //   const { otp } = await req.json();
+
+  //   const guest_token  = req.cookies.get("guest_token")?.value;
+
+  //   const ticket = req.cookies.get("otp_ticket")?.value;
+
+
+  //   if (!ticket || !otp) {
+  //     console.log(ticket)
+  //     console.log(otp)
+  //     const response = NextResponse.json(
+  //       { success: false, message: "Invalid ticket or otp" },
+  //       { status: 400 }
+  //     );
+  //     return withCors(response, origin);
+  //   }
+
+  //   await client.query("BEGIN");
+
+  //   const { rows, rowCount } = await client.query(
+  //     `SELECT *
+  //      FROM phone_otp
+  //      WHERE ticket=$1
+  //      AND expires_at > NOW()
+  //      FOR UPDATE`,
+  //     [ticket]
+  //   );
+
+  //   if (!rowCount) {
+  //     await client.query("ROLLBACK");
+  //     const response = NextResponse.json(
+  //       { success: false, message: "Invalid or expired OTP" },
+  //       { status: 400 }
+  //     );
+  //     return withCors(response, origin);
+  //   }
+
+  //   const otpRow = rows[0];
+
+  //   // Check attempt limit
+  //   if (otpRow.attempt >= 5) {
+  //     await client.query("ROLLBACK");
+  //     const response = NextResponse.json(
+  //       { success: false, message: "Too many attempts" },
+  //       { status: 403 }
+  //     );
+  //     return withCors(response, origin);
+  //   }
+
+  //   const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+  //   if (!crypto.timingSafeEqual(
+  //     Buffer.from(hashedOtp),
+  //     Buffer.from(otpRow.otp)
+  //   )) {
+  //     await client.query(
+  //       `UPDATE phone_otp
+  //        SET attempt = attempt + 1
+  //        WHERE id=$1`,
+  //       [otpRow.id]
+  //     );
+
+  //     await client.query("COMMIT");
+
+  //     const response = NextResponse.json(
+  //       { success: false, message: "Invalid OTP" },
+  //       { status: 400 }
+  //     );
+  //     return withCors(response, origin);
+  //   }
+
+  //   const phone_num = otpRow.phone_num;
+
+  //   let userResult = await client.query(
+  //     `SELECT id FROM users WHERE phone_num=$1`,
+  //     [phone_num]
+  //   );
+
+  //   let user_id;
+
+  //   if (userResult.rowCount) {
+  //     user_id = userResult.rows[0].id;
+  //   } else {
+  //     const insertUser = await client.query(
+  //       `INSERT INTO users (phone_num)
+  //        VALUES ($1)
+  //        RETURNING id`,
+  //       [phone_num]
+  //     );
+
+  //     user_id = insertUser.rows[0].id;
+
+  //     await client.query(
+  //       `INSERT INTO log (user_id, action_type, target)
+  //        VALUES ($1, $2, $3)`,
+  //       [user_id, "create", "user"]
+  //     );
+  //   }
+
+  //   // Generate secure session token
+  //   const token = crypto.randomBytes(32).toString("hex");
+
+  //   const hashedToken = crypto
+  //     .createHash("sha256")
+  //     .update(token)
+  //     .digest("hex");
+
+  //   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30); // 30 days
+
+  //   await client.query(
+  //     `INSERT INTO user_token (token, user_id, expires_at)
+  //      VALUES ($1, $2, $3)`,
+  //     [hashedToken, user_id, expiresAt]
+  //   );
+
+  //   if (guest_token) {
+  //     await client.query(
+  //       `UPDATE queue
+  //       SET user_id = $1, token = null
+  //       WHERE token = $2
+  //       AND user_id IS NULL`,
+  //       [user_id, guest_token]
+  //     );
+  //   }
+
+  //   await client.query(
+  //     `DELETE FROM phone_otp WHERE id=$1`,
+  //     [otpRow.id]
+  //   );
+
+  //   await client.query("COMMIT");
+
+  //   const response = NextResponse.json(
+  //     { success: true },
+  //     { status: 200 }
+  //   );
+
+  //   response.cookies.set("user_token", token, {
+  //     httpOnly: true,
+  //     secure: true,
+  //     sameSite: "none",
+  //     maxAge: 60 * 60 * 24 * 30, // 30 days
+  //     path: "/",
+  //   });
+
+  //   response.cookies.set("otp_ticket", "", {
+  //     httpOnly: true,
+  //     secure: true,
+  //     sameSite: "none",
+  //     maxAge: 0,
+  //     path: "/",
+  //   });
+
+  //   response.cookies.set("guest_token", "", {
+  //     httpOnly: true,
+  //     secure: true,
+  //     sameSite: "none",
+  //     maxAge: 0,
+  //     path: "/",
+  //   });
+    
+  //   return withCors(response, origin);
+
+  // } catch (err) {
+  //   try {
+  //     await client.query("ROLLBACK");
+  //   } catch {}
+
+  //   const response = NextResponse.json(
+  //     { success: false, message: "Internal Server Error" },
+  //     { status: 500 }
+  //   );
+  //   return withCors(response, origin);
+  // } finally {
+  //   client.release();
+  // }
   const origin = req.headers.get("origin");
   const client = await db.connect();
 
   try {
-    const { otp } = await req.json();
+    const { firstname, lastname } = await req.json();
 
-    const guest_token  = req.cookies.get("guest_token")?.value;
-
-    const ticket = req.cookies.get("otp_ticket")?.value;
-
-
-    if (!ticket || !otp) {
-      console.log(ticket)
-      console.log(otp)
+    // 1️⃣ Validate input
+    if (
+      !firstname || typeof firstname !== "string" ||
+      !lastname || typeof lastname !== "string"
+    ) {
       const response = NextResponse.json(
-        { success: false, message: "Invalid ticket or otp" },
+        { success: false, message: "Firstname and lastname are required" },
         { status: 400 }
       );
       return withCors(response, origin);
     }
+
+    if (firstname.length > 100 || lastname.length > 100) {
+      const response = NextResponse.json(
+        { success: false, message: "Name too long" },
+        { status: 400 }
+      );
+      return withCors(response, origin);
+    }
+
+    // 2️⃣ Verify user
+    const userAuth = await verifyUser(req);
+    if (userAuth.error) {
+      const response = NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+      return withCors(response, origin);
+    }
+
+    const { user_id } = userAuth;
 
     await client.query("BEGIN");
 
-    const { rows, rowCount } = await client.query(
-      `SELECT *
-       FROM phone_otp
-       WHERE ticket=$1
-       AND expires_at > NOW()
+    // 3️⃣ Lock user row
+    const userResult = await client.query(
+      `SELECT firstname, lastname
+       FROM users
+       WHERE id=$1
        FOR UPDATE`,
-      [ticket]
+      [user_id]
     );
 
-    if (!rowCount) {
+    if (!userResult.rowCount) {
       await client.query("ROLLBACK");
       const response = NextResponse.json(
-        { success: false, message: "Invalid or expired OTP" },
-        { status: 400 }
+        { success: false, message: "User not found" },
+        { status: 404 }
       );
       return withCors(response, origin);
     }
 
-    const otpRow = rows[0];
+    const oldFirstname = userResult.rows[0].firstname;
+    const oldLastname = userResult.rows[0].lastname;
 
-    // Check attempt limit
-    if (otpRow.attempt >= 5) {
-      await client.query("ROLLBACK");
-      const response = NextResponse.json(
-        { success: false, message: "Too many attempts" },
-        { status: 403 }
-      );
-      return withCors(response, origin);
-    }
-
-    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
-
-    if (hashedOtp !== otpRow.otp) {
-      await client.query(
-        `UPDATE phone_otp
-         SET attempt = attempt + 1
-         WHERE id=$1`,
-        [otpRow.id]
-      );
-
-      await client.query("COMMIT");
-
-      const response = NextResponse.json(
-        { success: false, message: "Invalid OTP" },
-        { status: 400 }
-      );
-      return withCors(response, origin);
-    }
-
-    const phone_num = otpRow.phone_num;
-
-    let userResult = await client.query(
-      `SELECT id FROM users WHERE phone_num=$1`,
-      [phone_num]
+    // 4️⃣ Update only if changed (optional optimization)
+    const result = await client.query(
+      `UPDATE users
+       SET firstname=$1,
+           lastname=$2
+       WHERE id=$3
+       RETURNING id, firstname, lastname`,
+      [firstname.trim(), lastname.trim(), user_id]
     );
 
-    let user_id;
-
-    if (userResult.rowCount) {
-      user_id = userResult.rows[0].id;
-    } else {
-      const insertUser = await client.query(
-        `INSERT INTO users (phone_num)
-         VALUES ($1)
-         RETURNING id`,
-        [phone_num]
-      );
-
-      user_id = insertUser.rows[0].id;
-
-      await client.query(
-        `INSERT INTO log (user_id, action_type, target)
-         VALUES ($1, $2, $3)`,
-        [user_id, "create", "user"]
-      );
-    }
-
-    // Generate secure session token
-    const token = crypto.randomBytes(32).toString("hex");
-
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
-
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30); // 30 days
-
+    // 5️⃣ Insert log
     await client.query(
-      `INSERT INTO user_token (token, user_id, expires_at)
-       VALUES ($1, $2, $3)`,
-      [hashedToken, user_id, expiresAt]
-    );
-
-    if (guest_token) {
-      await client.query(
-        `UPDATE queue
-        SET user_id = $1, token = null
-        WHERE token = $2
-        AND user_id IS NULL`,
-        [user_id, guest_token]
-      );
-    }
-
-    await client.query(
-      `DELETE FROM phone_otp WHERE id=$1`,
-      [otpRow.id]
+      `INSERT INTO log (user_id, action_type, action, target)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        user_id,
+        "update",
+        `Changed name from ${oldFirstname} ${oldLastname} to ${firstname} ${lastname}`,
+        "user"
+      ]
     );
 
     await client.query("COMMIT");
 
     const response = NextResponse.json(
-      { success: true },
+      {
+        success: true,
+        data: result.rows[0]
+      },
       { status: 200 }
     );
 
-    response.cookies.set("user_token", token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-      path: "/",
-    });
-
-    response.cookies.set("otp_ticket", "", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: 0,
-      path: "/",
-    });
-
-    response.cookies.set("guest_token", "", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: 0,
-      path: "/",
-    });
-    
     return withCors(response, origin);
 
   } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
+    try { await client.query("ROLLBACK"); } catch {}
 
     const response = NextResponse.json(
       { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
+
     return withCors(response, origin);
+
   } finally {
     client.release();
   }
@@ -386,8 +497,6 @@ export async function PUT(req) {
       [otpRow.id]
     );
 
-    await client.query("COMMIT");
-
     const token = crypto.randomBytes(32).toString("hex");
 
     const hashedToken = crypto
@@ -402,6 +511,8 @@ export async function PUT(req) {
        VALUES ($1, $2, $3)`,
       [hashedToken, user_id, expiresAt]
     );
+
+     await client.query("COMMIT");
 
     const response = NextResponse.json(
       { success: true },
