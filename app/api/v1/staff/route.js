@@ -160,11 +160,11 @@ export async function PUT(req) {
 
   const client = await db.connect();
 
-  // try {
+  try {
     const auth = await verifyStaff(req);
-    if (auth.error)return withCors(auth.error, origin);
+    if (auth.error) return withCors(auth.error, origin);
 
-    const { staff_id: authId, role: authRole } = auth;
+    const { staff_id: authId } = auth;
 
     const { searchParams } = new URL(req.url);
     const idParam = searchParams.get("id");
@@ -180,75 +180,50 @@ export async function PUT(req) {
     // =================================================
     // 👤 NORMAL STAFF
     // =================================================
-    if (!["admin", "super_admin"].includes(authRole)) {
-
       // 1️⃣ If using invite code
-      if (body.invite_code) {
+    if (body.invite_code && (body.first_name || body.last_name)) {
+      return json(
+        { success: false, message: "invite_code cannot be combined with profile update" },
+        400,
+        origin
+      );
+    }
 
-        await client.query("BEGIN");
-
-        const { rows } = await client.query(
-          `SELECT id
-           FROM section
-           WHERE invite_code = $1
-             AND code_expires_at >= NOW()
-             AND is_deleted = false`,
-          [body.invite_code]
-        );
-
-        if (!rows.length) {
-          await client.query("ROLLBACK");
-          return json({ success: false, message: "invalid or expired invite code" }, 400, origin);
-        }
-
-        const section_id = rows[0].id;
-
-        const result = await client.query(
-          `INSERT INTO staff_role (role, staff_id, section_id)
-          VALUES ($1,$2,$3)
-          ON CONFLICT (staff_id, section_id, role) DO NOTHING
-          RETURNING role, section_id`,
-          ["staff", authId, section_id]
-        );
-
-        await client.query(
-          `INSERT INTO log (staff_id, action_type, action, target)
-          VALUES ($1, $2, $3, $4)`,
-          [
-            authId,
-            "update",
-            `Joined section ${section_id} using invite code`,
-            "staff"
-          ]
-        );
-
-        await client.query("COMMIT");
-
-        return json({ success: true, data: result.rows[0] }, 200, origin);
-      }
-
-      // 2️⃣ Self profile update
-      if (id !== authId) {
-        return json({ success: false, message: "cannot modify other staff" }, 403, origin);
-
-      }
-
-      const { first_name, last_name } = body;
-
-      if (!first_name && !last_name)
-        return json({ success: false, message: "No fields to update" }, 400, origin);
-
+    if (body.invite_code) {
       await client.query("BEGIN");
 
-      const result = await client.query(
-        `UPDATE staff
-         SET
-           first_name = COALESCE($1, first_name),
-           last_name  = COALESCE($2, last_name)
-         WHERE id=$3
-         RETURNING id, first_name, last_name, section_id`,
-        [first_name, last_name, authId]
+      const { rows } = await client.query(
+        `SELECT id
+         FROM section
+         WHERE invite_code = $1
+           AND code_expires_at >= NOW()
+           AND is_deleted = false`,
+        [body.invite_code]
       );
+
+      if (!rows.length) {
+        await client.query("ROLLBACK");
+        return json({ success: false, message: "invalid or expired invite code" }, 400, origin);
+      }
+
+      const section_id = rows[0].id;
+
+      const result = await client.query(
+        `INSERT INTO staff_role (role, staff_id, section_id)
+        VALUES ($1,$2,$3)
+        ON CONFLICT (staff_id, section_id, role) DO NOTHING
+        RETURNING role, section_id`,
+        ["staff", authId, section_id]
+      );
+
+      if (result.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return json(
+          { success: false, message: "already joined this section" },
+          400,
+          origin
+        );
+      }
 
       await client.query(
         `INSERT INTO log (staff_id, action_type, action, target)
@@ -256,90 +231,126 @@ export async function PUT(req) {
         [
           authId,
           "update",
-          `${authId} update them self ${first_name} ${last_name}`,
+          `Joined section ${section_id} using invite code`,
           "staff"
         ]
       );
 
       await client.query("COMMIT");
-
+      
       return json({ success: true, data: result.rows[0] }, 200, origin);
     }
 
-    // =================================================
-    // 👑 ADMIN / SUPER_ADMIN
-    // =================================================
-
-    const { first_name, last_name, role, section_id } = body;
+    // 2️⃣ Self profile update
+    if (id !== authId) {
+      return json({ success: false, message: "cannot modify other staff" }, 403, origin);
+    }
+    
+    const { first_name, last_name } = body;
+    
+    if (!first_name && !last_name)
+      return json({ success: false, message: "No fields to update" }, 400, origin);
 
     await client.query("BEGIN");
-
-    if (section_id !== undefined) {
-
-      if (!Number.isInteger(section_id)) {
-        await client.query("ROLLBACK");
-        return json({ success: false, message: "invalid section_id" }, 400, origin);
-
-      }
-
-      const { rows: sectionRows } = await client.query(
-        `SELECT id
-        FROM section
-        WHERE id = $1
-          AND is_deleted = false`,
-        [section_id]
-      );
-
-      if (!sectionRows.length) {
-        await client.query("ROLLBACK");
-        return json({ success: false, message: "section not found" }, 404, origin);
-      }
-    }
-  
-    const { rows: targetRows } = await client.query(
-      `SELECT role FROM staff_role WHERE staff_id=$1`
-    );
-
-    if (!targetRows.length) {
-      await client.query("ROLLBACK");
-      return json({ success: false, message: "Not found" }, 404, origin);
-    }
-
-    const targetRole = targetRows[0].role;
-
-    if (targetRole === "super_admin" && authRole !== "super_admin") {
-      await client.query("ROLLBACK");
-      return json(
-        { success: false, message: "cannot modify super_admin" }, 403, origin);
-    }
 
     const result = await client.query(
       `UPDATE staff
        SET
          first_name = COALESCE($1, first_name),
          last_name  = COALESCE($2, last_name)
-       WHERE id=$5
-       RETURNING *`,
-      [first_name, last_name, role, section_id, id]
+       WHERE id=$3
+       RETURNING id, first_name, last_name, section_id`,
+      [first_name, last_name, authId]
     );
 
     await client.query(
-      `UPDATE staff_role
-      SET role = COALESCE($1, role)
-      WHERE staff_id=$2 AND section_id=$3`,
-      [role, id, section_id]
+      `INSERT INTO log (staff_id, action_type, action, target)
+      VALUES ($1, $2, $3, $4)`,
+      [
+        authId,
+        "update",
+        `Staff ${authId} updated profile`,
+        "staff"
+      ]
     );
 
     await client.query("COMMIT");
 
     return json({ success: true, data: result.rows[0] }, 200, origin);
-  // } catch (err) {
-  //   console.error("Update staff error:", err);
-  //   try { await client.query("ROLLBACK"); } catch {}
-  //   return json({ success: false, message: "error" }, 500, origin);
-  // } finally {
-  //   client.release();
-  // }
+    // =================================================
+    // 👑 ADMIN / SUPER_ADMIN
+    // =================================================
+
+    // const { first_name, last_name, role, section_id } = body;
+
+    // await client.query("BEGIN");
+
+    // if (section_id !== undefined) {
+
+    //   if (!Number.isInteger(section_id)) {
+    //     await client.query("ROLLBACK");
+    //     return json({ success: false, message: "invalid section_id" }, 400, origin);
+
+    //   }
+
+    //   const { rows: sectionRows } = await client.query(
+    //     `SELECT id
+    //     FROM section
+    //     WHERE id = $1
+    //       AND is_deleted = false`,
+    //     [section_id]
+    //   );
+
+    //   if (!sectionRows.length) {
+    //     await client.query("ROLLBACK");
+    //     return json({ success: false, message: "section not found" }, 404, origin);
+    //   }
+    // }
+  
+    // const { rows: targetRows } = await client.query(
+    //   `SELECT role FROM staff_role WHERE staff_id=$1`
+    // );
+
+    // if (!targetRows.length) {
+    //   await client.query("ROLLBACK");
+    //   return json({ success: false, message: "Not found" }, 404, origin);
+    // }
+
+    // const targetRole = targetRows[0].role;
+
+    // if (targetRole === "super_admin" && authRole !== "super_admin") {
+    //   await client.query("ROLLBACK");
+    //   return json(
+    //     { success: false, message: "cannot modify super_admin" }, 403, origin);
+    // }
+
+    // const result = await client.query(
+    //   `UPDATE staff
+    //    SET
+    //      first_name = COALESCE($1, first_name),
+    //      last_name  = COALESCE($2, last_name)
+    //    WHERE id=$5
+    //    RETURNING *`,
+    //   [first_name, last_name, role, section_id, id]
+    // );
+
+    // await client.query(
+    //   `UPDATE staff_role
+    //   SET role = COALESCE($1, role)
+    //   WHERE staff_id=$2 AND section_id=$3`,
+    //   [role, id, section_id]
+    // );
+
+    // await client.query("COMMIT");
+
+    // return json({ success: true, data: result.rows[0] }, 200, origin);
+  } catch (err) {
+    console.error("Update staff error:", err);
+    try { await client.query("ROLLBACK"); } catch {}
+    return json({ success: false, message: "error" }, 500, origin);
+  } finally {
+    client.release();
+  }
 }
 
 export async function DELETE(req) {
