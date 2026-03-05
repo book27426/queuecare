@@ -358,23 +358,22 @@ export async function DELETE(req) {
   const client = await db.connect();
   
   try {
-    // 1. Verify staff
+    // 1. Get id params
+    const idParam = searchParams.get("id");
+    const id = Number(idParam);
+
+    if (!id || Number.isNaN(id)) {
+      return json({ success:false, message:"valid id is required" },400,origin);
+    }
+
+    // 2. Verify staff
     const auth = await verifyStaff(req);
     if (auth.error)return withCors(auth.error, origin);
 
-    if (!["admin", "super_admin"].includes(auth.role)) {
-      return json({ "success": false, message: "admin only" }, 403, origin);
-    }
+    if (!auth.isAdmin && !auth.isSuperAdmin)
+      return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
     
     const staff_id = auth.staff_id;
-
-    // 2. Get id params
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-
-    if (!id || isNaN(id)) {
-      return json({ "success": false, message: "valid id is required" }, 400, origin);
-    }
 
     await client.query("BEGIN");
 
