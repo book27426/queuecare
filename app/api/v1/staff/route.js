@@ -160,7 +160,7 @@ export async function PUT(req) {
 
   const client = await db.connect();
 
-  try {
+  // try {
     const auth = await verifyStaff(req);
     if (auth.error)return withCors(auth.error, origin);
 
@@ -203,10 +203,11 @@ export async function PUT(req) {
 
         const section_id = rows[0].id;
 
-        await client.query(
+        const result = await client.query(
           `INSERT INTO staff_role (role, staff_id, section_id)
           VALUES ($1,$2,$3)
-          ON CONFLICT (staff_id, section_id, role) DO NOTHING`,
+          ON CONFLICT (staff_id, section_id, role) DO NOTHING
+          RETURNING role, section_id`,
           ["staff", authId, section_id]
         );
 
@@ -332,13 +333,13 @@ export async function PUT(req) {
     await client.query("COMMIT");
 
     return json({ success: true, data: result.rows[0] }, 200, origin);
-  } catch (err) {
-    console.error("Update staff error:", err);
-    try { await client.query("ROLLBACK"); } catch {}
-    return json({ success: false, message: "error" }, 500, origin);
-  } finally {
-    client.release();
-  }
+  // } catch (err) {
+  //   console.error("Update staff error:", err);
+  //   try { await client.query("ROLLBACK"); } catch {}
+  //   return json({ success: false, message: "error" }, 500, origin);
+  // } finally {
+  //   client.release();
+  // }
 }
 
 export async function DELETE(req) {
