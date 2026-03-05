@@ -27,8 +27,6 @@ export async function POST(req) {
 
 
     if (!ticket || !otp) {
-      console.log(ticket)
-      console.log(otp)
       const response = NextResponse.json(
         { success: false, message: "Invalid ticket or otp" },
         { status: 400 }
@@ -70,7 +68,8 @@ export async function POST(req) {
 
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
-    if (hashedOtp !== otpRow.otp) {
+    const storedOtp = otpRow.otp.trim();//must fix otpRow.otp
+    if (hashedOtp !== storedOtp) {
       await client.query(
         `UPDATE phone_otp
          SET attempt = attempt + 1
