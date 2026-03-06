@@ -245,6 +245,21 @@ export async function GET(req) {
   );
 
   // =================================================
+  // COUNTERS
+  // =================================================
+
+  const { rows: counters } = await db.query(
+    `
+    SELECT id, name
+    FROM counter
+    WHERE section_id = $1
+    AND is_deleted = false
+    ORDER BY name ASC
+    `,
+    [sectionId]
+  );
+
+  // =================================================
   // HOURLY STATS
   // =================================================
 
@@ -319,11 +334,14 @@ export async function GET(req) {
   return json({
     success: true,
     mode: "section-detail",
-    section,
-    stats,
-    sub_sections: subSections,
-    queues,
-    staffs
+    data: {
+      section,
+      stats,
+      counters,
+      sub_sections: subSections,
+      queues,
+      staffs
+    }
   }, 200, origin);
 }
 
@@ -556,7 +574,6 @@ export async function DELETE(req) {
   const client = await db.connect();
 
   try {
-
     // 1️⃣ Get section id
     const { searchParams } = new URL(req.url);
     const idParam = searchParams.get("id");
