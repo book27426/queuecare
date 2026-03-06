@@ -266,7 +266,8 @@ export async function PUT(req) {
       await client.query("BEGIN");
       
       const staff_id = auth.staff_id;
-      
+      const counter_id = auth.counter_id;
+
       // 2. Get request body
       const { status, queue_detail, section_id } = await req.json();
 
@@ -299,6 +300,36 @@ export async function PUT(req) {
         );
       } else if (status === "serving") {
         // 3.3 UPDATE queue serving
+        if(!counter_id){
+          const { rows } = await client.query(
+            `SELECT id
+            FROM counter
+            WHERE section_id = $1
+            AND is_active = true
+            ORDER BY id
+            LIMIT 1`,
+            [section_id]
+          );
+
+          if (!rows.length) {
+            await client.query("ROLLBACK");
+            return json(
+              { success: false, message: "No counter available" },
+              400,
+              origin
+            );
+          }
+
+          counter_id = rows[0].id;
+
+          await client.query(
+            `UPDATE staff_role
+            SET counter_id = $1
+            WHERE staff_id = $2
+            AND section_id = $3`,
+            [counter_id, staff_id, section_id]
+          );
+        }
         result = await client.query(
           `UPDATE queue
           SET status='serving', start_at=NOW(), staff_id=$2
