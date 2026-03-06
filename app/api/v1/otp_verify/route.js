@@ -23,7 +23,6 @@ export async function OPTIONS(req) {
 
 export async function POST(req) {
   const origin = req.headers.get("origin");
-
   return withTimer(async () => {
     try {
       const { phone_num } = await req.json();
