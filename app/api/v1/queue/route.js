@@ -248,13 +248,25 @@ export async function PUT(req) {
       return json({ success: false, message: "valid id is required" }, 400, origin);
     }
 
+    const queueCheck = await client.query(
+      `SELECT id, section_id, status
+      FROM queue
+      WHERE id = $1
+      FOR UPDATE`,
+      [id]
+    );
+
+    if (!queueCheck.rowCount) {
+      await client.query("ROLLBACK");
+      return json({ success: false, message: "queue not found" }, 404, origin);
+    }
     // 1. Verify staff
-    const auth = await verifyStaff(req);
+    const auth = await verifyStaff(req,queueCheck.section_id);
     if (!auth.error) {
       await client.query("BEGIN");
       
       const staff_id = auth.staff_id;
-      const staff_section_id = auth.section_id
+      
       // 2. Get request body
       const { status, queue_detail, section_id } = await req.json();
 
@@ -263,27 +275,6 @@ export async function PUT(req) {
       if (!allowedStatus.includes(status)) {
         await client.query("ROLLBACK");
         return json({ success: false, message: "invalid status" }, 400, origin);
-      }
-
-      const queueCheck = await client.query(
-        `SELECT id, section_id, status
-        FROM queue
-        WHERE id = $1
-        FOR UPDATE`,
-        [id]
-      );
-
-      if (!queueCheck.rowCount) {
-        await client.query("ROLLBACK");
-        return json({ success: false, message: "queue not found" }, 404, origin);
-      }
-
-      const queue = queueCheck.rows[0];
-
-      // Section permission check
-      if (queue.section_id !== staff_section_id) {
-        await client.query("ROLLBACK");
-        return json({ success: false, message: "not allowed" }, 403, origin);
       }
 
       let result;
