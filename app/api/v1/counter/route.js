@@ -82,12 +82,8 @@ export async function PUT(req) {
       // 2️. body
       const { name } = await req.json();
 
-      if (!name) {
-        return NextResponse.json(
-            { success: false, message: "name required" },
-            { status: 400 }
-        );
-      }
+      if (!name)
+        return json({ success: false, message: "name required" }, 400, origin);
 
       // 3️. get section of counter
       const counter = await db.query(
@@ -95,12 +91,8 @@ export async function PUT(req) {
         [counter_id]
       );
 
-      if (counter.rowCount === 0) {
-        return NextResponse.json(
-            { success: false, message: "Counter not found" },
-            { status: 404 }
-        );
-      }
+      if (counter.rowCount === 0)
+        return json({ success: false, message: "Counter not found" }, 404, origin);
 
       const section_id = counter.rows[0].section_id;
 
@@ -108,12 +100,8 @@ export async function PUT(req) {
       const auth = await verifyStaff(req, section_id);
       if (auth.error) return auth.error;
 
-      if (!auth.isAdmin && !auth.isSuperAdmin) {
-        return NextResponse.json(
-          { success: false, message: "Admin permission required" },
-          { status: 403 }
-        );
-      }
+      if (!auth.isAdmin && !auth.isSuperAdmin)
+        return json({ success: false, message: "Admin permission required" }, 403, origin);
 
       // 5️. update counter
       const { rows } = await db.query(
@@ -124,26 +112,16 @@ export async function PUT(req) {
         [name.trim().toUpperCase(), counter_id]
       );
 
-      return NextResponse.json({
-        success: true,
-        counter: rows[0]
-      });
+      return json({ success: true, counter: rows[0] }, 200, origin);
 
     } catch (err) {
 
-      if (err.code === "23505") {
-        return NextResponse.json(
-            { success: false, message: "Counter name already exists" },
-            { status: 409 }
-        );
-      }
+      if (err.code === "23505")
+        return json({ success: false, message: "Counter name already exists" }, 409, origin);
 
       console.error(err);
 
-      return NextResponse.json(
-        { success: false, message: "Server error" },
-        { status: 500 }
-      );
+      return json({ success: false, message: "Server error" }, 500, origin);
     }
   }, req, origin);
 }
@@ -199,11 +177,7 @@ export async function DELETE(req) {
         [counter_id]
       );
 
-      return json(
-        { success: true, message: "counter deleted" },
-        200,
-        origin
-      );
+      return json({ success: true, message: "counter deleted" }, 200, origin);
 
     } catch (err) {
       console.error(err);
