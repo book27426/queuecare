@@ -29,7 +29,8 @@ export async function POST(req) {
           { success: false, message: "Invalid ticket or otp" },
           { status: 400 }
         );
-        console.log("1")
+        console.log(otp)
+        console.log(ticket)
         return withCors(response, origin);
       }
 
