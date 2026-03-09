@@ -160,7 +160,7 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
-      response.cookies.set("otp_ticket", "", {
+      response.cookies.set("otp_ticket2", "", {
         httpOnly: true,
         secure: true,
         sameSite: "none",
