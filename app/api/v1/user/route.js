@@ -160,7 +160,7 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
-      response.cookies.set("otp_ticket2", "", {
+      response.cookies.set("otp_ticket", "", {
         httpOnly: true,
         secure: true,
         sameSite: "none",
@@ -168,13 +168,13 @@ export async function POST(req) {
         path: "/",
       });
 
-      response.cookies.set("user_token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-        path: "/",
-      });
+      // response.cookies.set("user_token", token, {
+      //   httpOnly: true,
+      //   secure: true,
+      //   sameSite: "none",
+      //   maxAge: 60 * 60 * 24 * 30, // 30 days
+      //   path: "/",
+      // });
       
       return withCors(response, origin);
 
