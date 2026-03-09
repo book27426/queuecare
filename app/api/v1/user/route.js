@@ -129,10 +129,9 @@ export async function POST(req) {
         [hashedToken, user_id, expiresAt]
       );
 
-      const response = withCors(
-        NextResponse.json({ success: true },{ status: 200 }), 
-        origin
-      )
+      const response = NextResponse.json({ success: true }, { status: 200 });
+      
+      withCors(response, origin);
 
       console.log(guest_token)
       if (guest_token) {
