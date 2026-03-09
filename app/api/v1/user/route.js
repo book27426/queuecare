@@ -149,6 +149,7 @@ export async function POST(req) {
           secure: true,
           sameSite: "none",
           path: "/",
+          domain:"queuecaredev.vercel.app",
           expires: new Date(0),
           maxAge: 0
         });
@@ -166,6 +167,7 @@ export async function POST(req) {
         secure: true,
         sameSite: "none",
         path: "/",
+        domain:"queuecaredev.vercel.app",
         expires: new Date(0),
         maxAge: 0
       });
