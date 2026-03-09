@@ -148,10 +148,10 @@ export async function POST(req) {
           httpOnly: true,
           secure: true,
           sameSite: "none",
-          maxAge: 0,
           path: "/",
+          expires: new Date(0),
+          maxAge: 0
         });
-        console.log("done guest")
       }
 
       await client.query(
