@@ -120,7 +120,7 @@ export async function GET(req) {
     // =================================================
     if (!id) {
 
-      const auth = await verifyStaff(req);
+      const auth = await verifyStaff(req,id);
 
       // PUBLIC SEARCH
       if (auth.error) {
@@ -143,11 +143,6 @@ export async function GET(req) {
         }, 200, origin);
       }
 
-      // STAFF SEARCH (their own sections)
-      const { roles } = auth;
-
-      const sectionIds = roles.map(r => r.section_id);
-
       const { rows } = await db.query(
         `
         SELECT id, name
@@ -156,7 +151,7 @@ export async function GET(req) {
         AND is_deleted = false
         AND id = ANY($2)
         `,
-        [searchName, sectionIds]
+        [searchName, id]
       );
 
       return json({
@@ -402,9 +397,13 @@ export async function PUT(req) {
 
       if (name !== undefined || parent_id !== undefined) {
 
-        if (!["admin", "super_admin"].includes(auth.role)) {
+        if (!auth.isAdmin && !auth.isSuperAdmin) {
           await client.query("ROLLBACK");
-          return json({ success: false, message: "Forbidden - admin only for structure change" }, 403, origin);
+          return json(
+            { success: false, message: "Forbidden - admin only for structure change" },
+            403,
+            origin
+          );
         }
 
         if (name !== undefined && name.trim() === "") {
