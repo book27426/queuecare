@@ -167,9 +167,8 @@ export async function POST(req) {
         secure: true,
         sameSite: "none",
         path: "/",
-        domain:"queuecaredev.vercel.app",
-        expires: new Date(0),
-        maxAge: 0
+        domain: "queuecaredev.vercel.app",
+        maxAge: 0,
       });
 
       response.cookies.set("user_token", token, {
