@@ -162,10 +162,10 @@ export async function POST(req) {
       );
 
       const cookieMaxAge = 60 * 60 * 24 * 30; // 30 days
-      response.headers.append(
-        "Set-Cookie",
-        `user_token=${token}; Path=/; Max-Age=${cookieMaxAge}; HttpOnly; Secure; SameSite=None`
-      );
+      // response.headers.append(
+      //   "Set-Cookie",
+      //   `user_token=${token}; Path=/; Max-Age=${cookieMaxAge}; HttpOnly; Secure; SameSite=None`
+      // );
       
       return response
 
