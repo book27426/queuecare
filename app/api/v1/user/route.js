@@ -29,8 +29,6 @@ export async function POST(req) {
           { success: false, message: "Invalid ticket or otp" },
           { status: 400 }
         );
-        console.log(otp)
-        console.log(ticket)
         return withCors(response, origin);
       }
 
@@ -51,7 +49,6 @@ export async function POST(req) {
           { success: false, message: "Invalid or expired OTP" },
           { status: 400 }
         );
-        console.log("2")
         return withCors(response, origin);
       }
 
@@ -83,7 +80,6 @@ export async function POST(req) {
           { success: false, message: "Invalid OTP" },
           { status: 400 }
         );
-        console.log("3")
         return withCors(response, origin);
       }
 
@@ -135,7 +131,8 @@ export async function POST(req) {
         { success: true },
         { status: 200 }
       );
-      
+
+      console.log(guest_token)
       if (guest_token) {
         await client.query(
           `UPDATE queue
@@ -152,6 +149,7 @@ export async function POST(req) {
           maxAge: 0,
           path: "/",
         });
+        console.log("done guest")
       }
 
       await client.query(
