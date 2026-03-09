@@ -141,7 +141,6 @@ export async function POST(req) {
           [user_id, guest_token]
         );
 
-        console.log("remove guest_token")
         response.cookies.set("guest_token", "", {
           httpOnly: true,
           secure: true,
@@ -149,7 +148,6 @@ export async function POST(req) {
           maxAge: 0,
           path: "/",
         });
-        console.log("remove guest_token done")
       }
 
       await client.query(
@@ -159,21 +157,19 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
-      console.log("add user_token")
-      response.cookies.set("user_token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-        path: "/",
-      });
-
-      console.log("remove otp_ticket")
       response.cookies.set("otp_ticket", "", {
         httpOnly: true,
         secure: true,
         sameSite: "none",
         maxAge: 0,
+        path: "/",
+      });
+
+      response.cookies.set("user_token", token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        maxAge: 60 * 60 * 24 * 30, // 30 days
         path: "/",
       });
       
