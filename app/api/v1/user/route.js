@@ -148,7 +148,7 @@ export async function POST(req) {
           httpOnly: true,
           secure: true,
           sameSite: "none",
-          maxAge: 0,
+          maxAge: 1,
           path: "/",
         });
       }
@@ -164,11 +164,11 @@ export async function POST(req) {
         httpOnly: true,
         secure: true,
         sameSite: "none",
-        maxAge: 0,
+        maxAge: 1,
         path: "/",
       });
 
-      response.cookies.set("user_token", token, {
+      response.cookies.set("user_token", "", {
         httpOnly: true,
         secure: true,
         sameSite: "none",
