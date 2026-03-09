@@ -66,7 +66,7 @@ export async function POST(req) {
 
       const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
-      if (hashedOtp !== otpRow.otp.trim()) {//must fix otpRow.otp
+      if (hashedOtp !== otpRow.otp.trim()) {
         await client.query(
           `UPDATE phone_otp
           SET attempt = attempt + 1
@@ -127,6 +127,11 @@ export async function POST(req) {
         [hashedToken, user_id, expiresAt]
       );
 
+      const response = NextResponse.json(
+        { success: true },
+        { status: 200 }
+      );
+      
       if (guest_token) {
         await client.query(
           `UPDATE queue
@@ -135,6 +140,16 @@ export async function POST(req) {
           AND user_id IS NULL`,
           [user_id, guest_token]
         );
+
+        console.log("remove guest_token")
+        response.cookies.set("guest_token", "", {
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+          maxAge: 0,
+          path: "/",
+        });
+        console.log("remove guest_token done")
       }
 
       await client.query(
@@ -144,11 +159,7 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
-      const response = NextResponse.json(
-        { success: true },
-        { status: 200 }
-      );
-
+      console.log("add user_token")
       response.cookies.set("user_token", token, {
         httpOnly: true,
         secure: true,
@@ -157,15 +168,8 @@ export async function POST(req) {
         path: "/",
       });
 
+      console.log("remove otp_ticket")
       response.cookies.set("otp_ticket", "", {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        maxAge: 0,
-        path: "/",
-      });
-
-      response.cookies.set("guest_token", "", {
         httpOnly: true,
         secure: true,
         sameSite: "none",

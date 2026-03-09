@@ -270,7 +270,7 @@ export async function PUT(req) {
         await client.query("BEGIN");
         
         const staff_id = auth.staff_id;
-        const counter_id = auth.counter_id;
+        let counter_id = auth.counter_id;
 
         // 2. Get request body
         const { status, queue_detail, section_id } = await req.json();
