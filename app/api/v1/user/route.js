@@ -29,6 +29,7 @@ export async function POST(req) {
           { success: false, message: "Invalid ticket or otp" },
           { status: 400 }
         );
+        console.log("1")
         return withCors(response, origin);
       }
 
@@ -49,6 +50,7 @@ export async function POST(req) {
           { success: false, message: "Invalid or expired OTP" },
           { status: 400 }
         );
+        console.log("2")
         return withCors(response, origin);
       }
 
@@ -80,6 +82,7 @@ export async function POST(req) {
           { success: false, message: "Invalid OTP" },
           { status: 400 }
         );
+        console.log("3")
         return withCors(response, origin);
       }
 
