@@ -143,10 +143,13 @@ export async function POST(req) {
           [user_id, guest_token]
         );
 
-        response.headers.append(
-          "Set-Cookie",
-          "guest_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None"
-        );
+        response.cookies.set("guest_token", "", {
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+          maxAge: 0,
+          path: "/",
+        });
       }
 
       await client.query(
@@ -156,16 +159,21 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
-      response.headers.append(
-        "Set-Cookie",
-        "otp_ticket=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None"
-      );
+      response.cookies.set("otp_ticket", "", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        maxAge: 0,
+        path: "/",
+      });
 
-      const cookieMaxAge = 60 * 60 * 24 * 30; // 30 days
-      response.headers.append(
-        "Set-Cookie",
-        `user_token=${token}; Path=/; Max-Age=${cookieMaxAge}; HttpOnly; Secure; SameSite=None`
-      );
+      response.cookies.set("user_token", token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        maxAge: 60 * 60 * 24 * 30,
+        path: "/",
+      });
       
       return response
 
