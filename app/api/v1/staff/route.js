@@ -377,9 +377,6 @@ export async function DELETE(req) {
       // 2. Verify staff
       const auth = await verifyStaff(req);
       if (auth.error)return withCors(auth.error, origin);
-
-      if (!auth.isSuperAdmin)
-        return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
       
       const staff_id = auth.staff_id;
 
@@ -400,6 +397,9 @@ export async function DELETE(req) {
 
         return withCors(response, origin);
       }
+
+      if (!auth.isSuperAdmin)
+        return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
 
       await client.query("BEGIN");
 
