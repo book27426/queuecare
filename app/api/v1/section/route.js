@@ -115,13 +115,12 @@ export async function GET(req) {
 
     const searchName = name ?? "";
 
+    const auth = await verifyStaff(req);
+
     // =================================================
     // 🔎 SEARCH SECTION
     // =================================================
     if (!id) {
-
-      const auth = await verifyStaff(req,id);
-
       // PUBLIC SEARCH
       if (auth.error) {
 
@@ -143,6 +142,8 @@ export async function GET(req) {
         }, 200, origin);
       }
 
+      const sectionIds = auth.roles.map(r => r.section_id);
+
       const { rows } = await db.query(
         `
         SELECT id, name
@@ -151,7 +152,7 @@ export async function GET(req) {
         AND is_deleted = false
         AND id = ANY($2)
         `,
-        [searchName, id]
+        [searchName, sectionIds]
       );
 
       return json({
@@ -165,18 +166,16 @@ export async function GET(req) {
     // 📌 SECTION DETAIL
     // =================================================
 
+    if (auth.error) return withCors(auth.error, origin);
+
     const sectionId = Number(id);
 
     if (!Number.isInteger(sectionId) || sectionId <= 0) {
       return json({ success: false, message: "valid id is required" }, 400, origin);
     }
 
-    // verify access to this section
-    const auth = await verifyStaff(req, sectionId);
-    if (auth.error) return withCors(auth.error, origin);
-
-    const { staff_id, isSuperAdmin } = auth;
-
+    const roleSectionIds = auth.roles?.map(r => r.section_id) || [];
+    
     // =================================================
     // GET SECTION
     // =================================================
@@ -198,12 +197,54 @@ export async function GET(req) {
     const section = sectionRows[0];
 
     // =================================================
+    // GET SUBTREE (permission check)
+    // =================================================
+
+    const { rows: subtreeRows } = await db.query(
+      `
+      WITH RECURSIVE subtree AS (
+        SELECT id
+        FROM section
+        WHERE id = $1
+
+        UNION ALL
+
+        SELECT s.id
+        FROM section s
+        JOIN subtree st ON s.parent_id = st.id
+      )
+      SELECT id FROM subtree
+      `,
+      [sectionId]
+    );
+
+    const subtreeIds = subtreeRows.map(r => r.id);
+
+    const hasDirectAccess = roleSectionIds.includes(sectionId);
+
+    const allowedSubSections = roleSectionIds.filter(id =>
+      subtreeIds.includes(id)
+    );
+
+    const hasSubAccess = allowedSubSections.length > 0;
+
+    if (!auth.isSuperAdmin && !hasDirectAccess && !hasSubAccess) {
+      return json({ success: false, message: "Forbidden" }, 403, origin);
+    }
+
+    const fullAccess = auth.isSuperAdmin || hasDirectAccess;
+
+    const allowedSectionIds = fullAccess
+      ? [sectionId]
+      : allowedSubSections;
+
+    // =================================================
     // SUB SECTIONS
     // =================================================
 
-    const { rows: subSections } = await db.query(
+    const { rows: subSectionsRaw } = await db.query(
       `
-      SELECT *
+      SELECT id, name, parent_id
       FROM section
       WHERE parent_id = $1
       AND is_deleted=false
@@ -211,6 +252,22 @@ export async function GET(req) {
       [sectionId]
     );
 
+    const subSections = subSectionsRaw.map(sec => {
+
+      let hasAccess = false;
+
+      if (auth.isSuperAdmin || fullAccess) {
+        hasAccess = true;
+      } else {
+        hasAccess = roleSectionIds.includes(sec.id);
+      }
+
+      return {
+        ...sec,
+        has_access: hasAccess
+      };
+    });
+    
     // =================================================
     // QUEUES
     // =================================================
@@ -219,10 +276,10 @@ export async function GET(req) {
       `
       SELECT *
       FROM queue
-      WHERE section_id = $1
+      WHERE section_id = ANY($1)
       AND status='waiting'
       `,
-      [sectionId]
+      [allowedSectionIds]
     );
 
     // =================================================
@@ -231,14 +288,14 @@ export async function GET(req) {
 
     const { rows: staffs } = await db.query(
       `
-      SELECT s.id, s.first_name, s.last_name
+      SELECT s.id, s.first_name, s.last_name, sr.section_id
       FROM staff s
       JOIN staff_role sr ON sr.staff_id = s.id
-      WHERE sr.section_id = $1
+      WHERE sr.section_id = ANY($1)
       AND s.is_deleted = false
       ORDER BY s.first_name ASC
       `,
-      [sectionId]
+      [allowedSectionIds]
     );
 
     // =================================================
@@ -247,13 +304,13 @@ export async function GET(req) {
 
     const { rows: counters } = await db.query(
       `
-      SELECT id, name
+      SELECT id, name, section_id
       FROM counter
-      WHERE section_id = $1
+      WHERE section_id = ANY($1)
       AND is_deleted = false
       ORDER BY name ASC
       `,
-      [sectionId]
+      [allowedSectionIds]
     );
 
     // =================================================
@@ -267,17 +324,13 @@ export async function GET(req) {
         COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
         COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS complete
       FROM queue
-      WHERE section_id = $1
+      WHERE section_id = ANY($1)
       AND created_at >= CURRENT_DATE
       GROUP BY 1
       ORDER BY 1
       `,
-      [sectionId]
+      [allowedSectionIds]
     );
-
-    // =================================================
-    // AVG OPERATION
-    // =================================================
 
     const { rows: avgRows } = await db.query(
       `
@@ -285,18 +338,14 @@ export async function GET(req) {
         AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60)
         AS avg_operation_minutes
       FROM queue
-      WHERE section_id = $1
+      WHERE section_id = ANY($1)
       AND status IN ('complete','transfer')
       AND start_at IS NOT NULL
       AND end_at IS NOT NULL
       AND end_at >= CURRENT_DATE
       `,
-      [sectionId]
+      [allowedSectionIds]
     );
-
-    // =================================================
-    // TOTALS
-    // =================================================
 
     const { rows: totalRows } = await db.query(
       `
@@ -304,10 +353,10 @@ export async function GET(req) {
         COUNT(*) FILTER (WHERE status != 'cancel') AS total_new,
         COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS total_complete
       FROM queue
-      WHERE section_id = $1
+      WHERE section_id = ANY($1)
       AND created_at >= CURRENT_DATE
       `,
-      [sectionId]
+      [allowedSectionIds]
     );
 
     const now = new Date();
@@ -315,13 +364,13 @@ export async function GET(req) {
 
     const stats = {
       est_new_queue_per_hour:
-        Number(totalRows[0].total_new) / hoursPassed,
+        Number(totalRows[0]?.total_new || 0) / hoursPassed,
 
       est_complete_case_per_hour:
-        Number(totalRows[0].total_complete) / hoursPassed,
+        Number(totalRows[0]?.total_complete || 0) / hoursPassed,
 
       est_avg_operation_time_per_case_minutes:
-        Number(avgRows[0].avg_operation_minutes) || 0,
+        Number(avgRows[0]?.avg_operation_minutes) || 0,
 
       hourly_breakdown: hourlyRows,
 
@@ -331,13 +380,14 @@ export async function GET(req) {
     return json({
       success: true,
       mode: "section-detail",
+      access: fullAccess ? "full" : "partial",
       data: {
         section,
-        stats,
-        counters,
         sub_sections: subSections,
+        counters,
         queues,
-        staffs
+        staffs,
+        stats
       }
     }, 200, origin);
   }, req, origin);
@@ -348,16 +398,16 @@ export async function PUT(req) {
   const client = await db.connect();
   return withTimer(async () => {
     try {
-      // 1️. Verify staff
-      const auth = await verifyStaff(req);
-      if (auth.error)return withCors(auth.error, origin);
-
-      const staff_id = auth.staff_id;
-
       // 2️. Get section id
       const { searchParams } = new URL(req.url);
       const idParam = searchParams.get("id");
       const sectionId = Number(idParam);
+
+      // 1️. Verify staff
+      const auth = await verifyStaff(req,sectionId);
+      if (auth.error)return withCors(auth.error, origin);
+
+      const staff_id = auth.staff_id;
 
       if (!idParam || Number.isNaN(sectionId))
         return json({ success: false }, 400, origin);
