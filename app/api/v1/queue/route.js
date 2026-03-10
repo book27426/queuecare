@@ -141,26 +141,26 @@ export async function GET(req) {
     try {
       const guest_token  = req.cookies.get("guest_token")?.value;
 
-      const staffAuth = await verifyStaff(req);
-      // 🧑‍💼 STAFF VIEW
-      if (!staffAuth.error) {
-        const { section_id } = staffAuth;
+      // const staffAuth = await verifyStaff(req);
+      // // 🧑‍💼 STAFF VIEW
+      // if (!staffAuth.error) {
+      //   const { section_id } = staffAuth;
 
-        const { rows } = await db.query(
-          `SELECT *
-          FROM queue
-          WHERE section_id = $1
-            AND status IN ('waiting', 'serving')
-          ORDER BY id ASC`,
-          [section_id]
-        );
+      //   const { rows } = await db.query(
+      //     `SELECT *
+      //     FROM queue
+      //     WHERE section_id = $1
+      //       AND status IN ('waiting', 'serving')
+      //     ORDER BY id ASC`,
+      //     [section_id]
+      //   );
 
-        return json({
-          success: true,
-          role: "staff",
-          data: rows,
-        }, 200, origin);
-      }
+      //   return json({
+      //     success: true,
+      //     role: "staff",
+      //     data: rows,
+      //   }, 200, origin);
+      // }
 
       // ===============================
       // 👤 USER VIEW
