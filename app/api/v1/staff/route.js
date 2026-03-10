@@ -370,18 +370,10 @@ export async function DELETE(req) {
       const idParam = searchParams.get("id");
       const id = Number(idParam);
 
-      if (!id || Number.isNaN(id)) {
-        return json({ success:false, message:"valid id is required" },400,origin);
-      }
-
-      // 2. Verify staff
       const auth = await verifyStaff(req);
       if (auth.error)return withCors(auth.error, origin);
-      
-      const staff_id = auth.staff_id;
 
-      if (staff_id === id) {
-
+      if (!id || Number.isNaN(id)) {
         const response = NextResponse.json(
           { success: true, status: "logout"},
           { status: 200 }
