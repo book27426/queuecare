@@ -366,6 +366,7 @@ export async function DELETE(req) {
   return withTimer(async () => {
     try {
       // 1. Get id params
+      const { searchParams } = new URL(req.url);
       const idParam = searchParams.get("id");
       const id = Number(idParam);
 
@@ -377,10 +378,28 @@ export async function DELETE(req) {
       const auth = await verifyStaff(req);
       if (auth.error)return withCors(auth.error, origin);
 
-      if (!auth.isAdmin && !auth.isSuperAdmin)
+      if (!auth.isSuperAdmin)
         return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
       
       const staff_id = auth.staff_id;
+
+      if (staff_id === id) {
+
+        const response = NextResponse.json(
+          { success: true, status: "logout"},
+          { status: 200 }
+        );
+
+        response.cookies.set("session", "", {
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+          maxAge: 0,
+          path: "/",
+        });
+
+        return withCors(response, origin);
+      }
 
       await client.query("BEGIN");
 

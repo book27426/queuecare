@@ -108,7 +108,7 @@ export async function POST(req) {
 
 export async function GET(req) {
   const origin = req.headers.get("origin");
-  return withTimer(async () => {
+  // return withTimer(async () => {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const name = searchParams.get("name");
@@ -307,7 +307,6 @@ export async function GET(req) {
       SELECT id, name, section_id
       FROM counter
       WHERE section_id = ANY($1)
-      AND is_deleted = false
       ORDER BY name ASC
       `,
       [allowedSectionIds]
@@ -390,7 +389,7 @@ export async function GET(req) {
         stats
       }
     }, 200, origin);
-  }, req, origin);
+  // }, req, origin);
 }
 
 export async function PUT(req) {
