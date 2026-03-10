@@ -374,21 +374,23 @@ export async function DELETE(req) {
       if (auth.error)return withCors(auth.error, origin);
 
       if (!id || Number.isNaN(id)) {
-        const response = NextResponse.json(
-          { success: true, status: "logout"},
-          { status: 200 }
-        );
+        // const response = NextResponse.json(
+        //   { success: true, status: "logout"},
+        //   { status: 200 }
+        // );
 
-        response.cookies.set("session", "", {
-          httpOnly: true,
-          secure: true,
-          sameSite: "none",
-          maxAge: 0,
-          path: "/",
-        });
+        // response.cookies.set("session", "", {
+        //   httpOnly: true,
+        //   secure: true,
+        //   sameSite: "none",
+        //   maxAge: 0,
+        //   path: "/",
+        // });
 
-        return withCors(response, origin);
+        // return withCors(response, origin);
+        return json({ "success": false, message: "id is required" }, 400, origin);
       }
+
 
       if (!auth.isSuperAdmin)
         return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
