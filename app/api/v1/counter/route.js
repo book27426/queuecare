@@ -27,10 +27,10 @@ export async function POST(req) {
     try {
       // 1️. get section_id from URL
       const { searchParams } = new URL(req.url);
-      const section_id = searchParams.get("id");
+      const section_id = Number(searchParams.get("id"));
 
-      if (!section_id)
-        return json({ success: false, message: "section id required" }, 400, origin);
+      if (!section_id || Number.isNaN(section_id))
+        return json({ success: false, message: "valid section id required" }, 400, origin);
 
       // 2️. get body
       const { name } = await req.json();
@@ -40,7 +40,6 @@ export async function POST(req) {
 
       // 3️. verify staff permission
       const auth = await verifyStaff(req, section_id);
-
       if (auth.error) return auth.error;
 
       if (!auth.isAdmin && !auth.isSuperAdmin) {
@@ -73,11 +72,10 @@ export async function PUT(req) {
     try {
       // 1️. get counter id
       const { searchParams } = new URL(req.url);
-      const counter_id = searchParams.get("id");
+      const counter_id = Number(searchParams.get("id"));
 
-      if (!counter_id) {
-        return json({ success: false, message: "counter id required" }, 400, origin);
-      }
+      if (!counter_id || Number.isNaN(counter_id))
+        return json({ success: false, message: "valid counter id required" }, 400, origin);
 
       // 2️. body
       const { name } = await req.json();
@@ -131,15 +129,10 @@ export async function DELETE(req) {
   return withTimer(async () => {
     try {
       const { searchParams } = new URL(req.url);
-      const counter_id = searchParams.get("id");
+      const counter_id = Number(searchParams.get("id"));
 
-      if (!counter_id) {
-        return json(
-            { success: false, message: "counter id required" },
-            400,
-            origin
-        );
-      }
+      if (!counter_id || Number.isNaN(counter_id))
+        return json({ success: false, message: "valid counter id required" }, 400, origin);
 
       // find section_id of counter
       const { rows } = await db.query(
@@ -188,4 +181,96 @@ export async function DELETE(req) {
       );
     }
   }, req, origin);
+}
+
+export async function GET(req) {
+  const client = await db.connect();
+
+  try {
+    const { searchParams } = new URL(req.url);
+    const counterId = Number(searchParams.get("counter_id"));
+
+    if (!counterId || Number.isNaN(counterId)) {
+      return NextResponse.json(
+        { success: false, message: "counter_id is required" },
+        { status: 400 }
+      );
+    }
+
+    // 1️⃣ Get counter info
+    const counterCheck = await client.query(
+      `
+      SELECT id, name, section_id
+      FROM counter
+      WHERE id = $1
+      `,
+      [counterId]
+    );
+
+    if (!counterCheck.rowCount) {
+      return NextResponse.json(
+        { success: false, message: "counter not found" },
+        { status: 404 }
+      );
+    }
+
+    const counter = counterCheck.rows[0];
+
+    // 2️⃣ Verify staff permission
+    const auth = await verifyStaff(req, counter.section_id);
+
+    if (auth.error) return auth.error;
+
+    // 3️⃣ Get current serving queue
+    const currentQueue = await client.query(
+      `
+      SELECT
+        q.id,
+        q.number,
+        q.name,
+        q.phone_num,
+        q.start_at
+      FROM queue q
+      JOIN staff_role sr
+        ON sr.staff_id = q.staff_id
+      WHERE sr.counter_id = $1
+      AND q.status = 'serving'
+      AND q.queue_date = CURRENT_DATE
+      LIMIT 1
+      `,
+      [counterId]
+    );
+
+    // 4️⃣ Get waiting queues in this section
+    const waitingQueues = await client.query(
+      `
+      SELECT number, name
+      FROM queue
+      WHERE section_id = $1
+      AND queue_date = CURRENT_DATE
+      AND status = 'waiting'
+      ORDER BY number
+      `,
+      [counter.section_id]
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        counter,
+        current_queue: currentQueue.rows[0] || null,
+        waiting_queues: waitingQueues.rows
+      }
+    });
+
+  } catch (err) {
+
+    return NextResponse.json(
+      { success: false, message: err.message },
+      { status: 500 }
+    );
+
+  } finally {
+    client.release();
+  }
 }
