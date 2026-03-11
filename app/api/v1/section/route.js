@@ -174,8 +174,9 @@ export async function GET(req) {
       return json({ success: false, message: "valid id is required" }, 400, origin);
     }
 
+    console.log(sectionId)
     const roleSectionIds = auth.roles?.map(r => r.section_id) || [];
-    
+    console.log(roleSectionIds)
     // =================================================
     // GET SECTION
     // =================================================
@@ -196,6 +197,7 @@ export async function GET(req) {
 
     const section = sectionRows[0];
 
+    console.log(section)
     // =================================================
     // GET SUBTREE (permission check)
     // =================================================
@@ -238,6 +240,8 @@ export async function GET(req) {
       ? [sectionId]
       : allowedSubSections;
 
+
+    console.log(allowedSectionIds)
     // =================================================
     // SUB SECTIONS
     // =================================================
@@ -268,6 +272,7 @@ export async function GET(req) {
       };
     });
     
+    console.log(subSections)
     // =================================================
     // QUEUES
     // =================================================
