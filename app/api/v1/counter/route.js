@@ -188,7 +188,7 @@ export async function GET(req) {
 
   try {
     const { searchParams } = new URL(req.url);
-    const counterId = Number(searchParams.get("counter_id"));
+    const counterId = Number(searchParams.get("id"));
 
     if (!counterId || Number.isNaN(counterId)) {
       return NextResponse.json(
