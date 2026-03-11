@@ -184,93 +184,105 @@ export async function DELETE(req) {
 }
 
 export async function GET(req) {
-  const client = await db.connect();
+  const origin = req.headers.get("origin");
 
-  try {
-    const { searchParams } = new URL(req.url);
-    const counterId = Number(searchParams.get("id"));
+  return withTimer(async () => {
+    try {
 
-    if (!counterId || Number.isNaN(counterId)) {
-      return NextResponse.json(
-        { success: false, message: "counter_id is required" },
-        { status: 400 }
-      );
-    }
+      // 1️⃣ get counter id
+      const { searchParams } = new URL(req.url);
+      const counter_id = Number(searchParams.get("id"));
 
-    // 1️⃣ Get counter info
-    const counterCheck = await client.query(
-      `
-      SELECT id, name, section_id
-      FROM counter
-      WHERE id = $1
-      `,
-      [counterId]
-    );
-
-    if (!counterCheck.rowCount) {
-      return NextResponse.json(
-        { success: false, message: "counter not found" },
-        { status: 404 }
-      );
-    }
-
-    const counter = counterCheck.rows[0];
-
-    // 2️⃣ Verify staff permission
-    const auth = await verifyStaff(req, counter.section_id);
-
-    if (auth.error) return auth.error;
-
-    // 3️⃣ Get current serving queue
-    const currentQueue = await client.query(
-      `
-      SELECT
-        q.id,
-        q.number,
-        q.name,
-        q.phone_num,
-        q.start_at
-      FROM queue q
-      JOIN staff_role sr
-        ON sr.staff_id = q.staff_id
-      WHERE sr.counter_id = $1
-      AND q.status = 'serving'
-      AND q.queue_date = CURRENT_DATE
-      LIMIT 1
-      `,
-      [counterId]
-    );
-
-    // 4️⃣ Get waiting queues in this section
-    const waitingQueues = await client.query(
-      `
-      SELECT number, name
-      FROM queue
-      WHERE section_id = $1
-      AND queue_date = CURRENT_DATE
-      AND status = 'waiting'
-      ORDER BY number
-      `,
-      [counter.section_id]
-    );
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        counter,
-        current_queue: currentQueue.rows[0] || null,
-        waiting_queues: waitingQueues.rows
+      if (!counter_id || Number.isNaN(counter_id)) {
+        return json(
+          { success: false, message: "valid counter id required" },
+          400,
+          origin
+        );
       }
-    });
 
-  } catch (err) {
+      // 2️⃣ find counter + section
+      const counterCheck = await db.query(
+        `SELECT id, name, section_id
+         FROM counter
+         WHERE id = $1
+         AND is_deleted = false`,
+        [counter_id]
+      );
 
-    return NextResponse.json(
-      { success: false, message: err.message },
-      { status: 500 }
-    );
+      if (!counterCheck.rowCount) {
+        return json(
+          { success: false, message: "counter not found" },
+          404,
+          origin
+        );
+      }
 
-  } finally {
-    client.release();
-  }
+      const counter = counterCheck.rows[0];
+
+      // 3️⃣ verify permission
+      const auth = await verifyStaff(req, counter.section_id);
+      if (auth.error) return auth.error;
+
+      // optional: restrict to own counter
+      if (!auth.isAdmin && !auth.isSuperAdmin && auth.counter_id !== counter_id) {
+        return json(
+          { success: false, message: "Forbidden: not your counter" },
+          403,
+          origin
+        );
+      }
+
+      // 4️⃣ get current queue
+      const currentQueue = await db.query(
+        `SELECT id, number, name, phone_num, start_at
+         FROM queue
+         WHERE staff_id = (
+           SELECT staff_id
+           FROM staff_role
+           WHERE counter_id = $1
+           LIMIT 1
+         )
+         AND status = 'serving'
+         AND queue_date = CURRENT_DATE`,
+        [counter_id]
+      );
+
+      // 5️⃣ waiting queues in section
+      const waitingQueues = await db.query(
+        `SELECT number, name
+         FROM queue
+         WHERE section_id = $1
+         AND queue_date = CURRENT_DATE
+         AND status = 'waiting'
+         ORDER BY number`,
+        [counter.section_id]
+      );
+
+      return json(
+        {
+          success: true,
+          data: {
+            counter: {
+              id: counter.id,
+              name: counter.name
+            },
+            current_queue: currentQueue.rows[0] || null,
+            waiting_queues: waitingQueues.rows
+          }
+        },
+        200,
+        origin
+      );
+
+    } catch (err) {
+      console.error(err);
+
+      return json(
+        { success: false, message: "server error" },
+        500,
+        origin
+      );
+    }
+  }, req, origin);
 }
