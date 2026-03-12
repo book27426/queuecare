@@ -441,34 +441,34 @@ export async function PUT(req) {
   }, req, origin);
 }
 
-export async function DELETE(req) {
-  const origin = req.headers.get("origin");
-  return withTimer(async () => {
-    const auth = await verifyUser(req);
-    if (auth.error) {
-      return withCors(auth.error, origin);
-    }
+// export async function DELETE(req) {
+//   const origin = req.headers.get("origin");
+//   return withTimer(async () => {
+//     const auth = await verifyUser(req);
+//     if (auth.error) {
+//       return withCors(auth.error, origin);
+//     }
 
-    const { token_hash } = auth;
+//     const { token_hash } = auth;
 
-    await db.query(
-      `DELETE FROM user_token WHERE token=$1`,
-      [token_hash]
-    );
+//     await db.query(
+//       `DELETE FROM user_token WHERE token=$1`,
+//       [token_hash]
+//     );
 
-    const response = NextResponse.json({
-      success: true,
-      message: "Logged out"
-    });
+//     const response = NextResponse.json({
+//       success: true,
+//       message: "Logged out"
+//     });
 
-    response.cookies.set("user_token", "", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: 0,
-      path: "/",
-    });
+//     response.cookies.set("user_token", "", {
+//       httpOnly: true,
+//       secure: true,
+//       sameSite: "none",
+//       maxAge: 0,
+//       path: "/",
+//     });
 
-    return withCors(response, origin);
-  }, req, origin);
-}
+//     return withCors(response, origin);
+//   }, req, origin);
+// }
