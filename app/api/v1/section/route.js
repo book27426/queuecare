@@ -25,7 +25,7 @@ export async function POST(req) {
   const origin = req.headers.get("origin");
   const client = await db.connect();
   return withTimer(async () => {
-    // try {
+    try {
       ///this take to long to run
       // 1. Verify staff
       const auth = await verifyStaff(req);
@@ -94,16 +94,16 @@ export async function POST(req) {
 
       return json({ success: true, data: section.rows[0] }, 201, origin);
 
-    // } catch (err) {
-    //   try {
-    //     await client.query("ROLLBACK");
-    //   } catch {}
+    } catch (err) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
 
-    //   console.error(err);
-    //   return json({ success: false, message: "internal server error" }, 500, origin);
-    // } finally {
-    //   client.release();
-    // }
+      console.error(err);
+      return json({ success: false, message: "internal server error" }, 500, origin);
+    } finally {
+      client.release();
+    }
   }, req, origin);
 }
 
