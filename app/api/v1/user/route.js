@@ -442,7 +442,6 @@ export async function PUT(req) {
 }
 
 export async function DELETE(req) {
-  console.log("start")
   const origin = req.headers.get("origin");
   
   return withTimer(async () => {
@@ -470,7 +469,6 @@ export async function DELETE(req) {
 
     if (userToken) {
       const hashedToken = crypto.createHash("sha256").update(userToken).digest("hex");
-      console.log(hashedToken)
       await db.query(`DELETE FROM user_token WHERE token = $1`, [hashedToken]);
 
       response.cookies.set("user_token", "", {
