@@ -139,26 +139,37 @@ export async function GET(req) {
     try {
       const guest_token  = req.cookies.get("guest_token")?.value;
 
-      // const staffAuth = await verifyStaff(req);
-      // // 🧑‍💼 STAFF VIEW
-      // if (!staffAuth.error) {
-      //   const { section_id } = staffAuth;
+      const staffAuth = await verifyStaff(req);
+      // 🧑‍💼 STAFF VIEW
+      if (!staffAuth.error) {
+        const { searchParams } = new URL(req.url);
+        const section_id = Number(searchParams.get("id"));
+        const { rows } = await db.query(
+          `SELECT *
+          FROM queue
+          WHERE section_id = $1
+            AND status IN ('waiting', 'serving')
+          ORDER BY 
+            CASE WHEN status = 'serving' THEN 0 ELSE 1 END, 
+            id ASC`,
+          [section_id]
+        );
+        
+        const staffData = rows.reduce((acc, row) => {
+          if (row.status === 'serving') {
+            acc.serving.push(row);
+          } else {
+            acc.waiting.push(row);
+          }
+          return acc;
+        }, { serving: [], waiting: [] });
 
-      //   const { rows } = await db.query(
-      //     `SELECT *
-      //     FROM queue
-      //     WHERE section_id = $1
-      //       AND status IN ('waiting', 'serving')
-      //     ORDER BY id ASC`,
-      //     [section_id]
-      //   );
-
-      //   return json({
-      //     success: true,
-      //     role: "staff",
-      //     data: rows,
-      //   }, 200, origin);
-      // }
+        return json({
+          success: true,
+          role: "staff",
+          data: staffData,
+        }, 200, origin);
+      }
 
       // ===============================
       // 👤 USER & GUEST VIEW
@@ -244,7 +255,7 @@ export async function PUT(req) {
         let counter_id = auth.counter_id;
 
         // 2. Get request body
-        const { status, queue_detail, section_id } = await req.json();
+        const { status, queue_detail, section_id, next } = await req.json();
 
         const allowedStatus = ["no_show", "complete", "serving", "transfer"];
 
@@ -260,8 +271,7 @@ export async function PUT(req) {
           result = await client.query(
             `UPDATE queue
             SET status='no_show', end_at=NOW()
-            WHERE id=$1 AND status='serving' AND staff_id=$2
-            RETURNING *`,
+            WHERE id=$1 AND status='serving' AND staff_id=$2`,
             [id, staff_id]
           );
         } else if (status === "complete") {
@@ -269,11 +279,11 @@ export async function PUT(req) {
           result = await client.query(
             `UPDATE queue
             SET status='complete', detail=$1, end_at=NOW()
-            WHERE id=$2 AND status='serving' AND staff_id=$3
-            RETURNING *`,
+            WHERE id=$2 AND status='serving' AND staff_id=$3`,
             [queue_detail, id, staff_id]
           );
-        } else if (status === "serving") {
+        } 
+        if (next||status === "serving") {
           // 3.3 UPDATE queue serving
           if(!counter_id){
             const { rows } = await client.query(
@@ -378,6 +388,7 @@ export async function PUT(req) {
         await client.query("COMMIT");
         return json({ success: true, role: "staff", data: result.rows[0]}, 200, origin);
       }
+
       // 1. Verify User
       const userAuth = await verifyUser(req);
 
