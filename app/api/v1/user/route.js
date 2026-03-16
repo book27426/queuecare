@@ -441,34 +441,47 @@ export async function PUT(req) {
   }, req, origin);
 }
 
-// export async function DELETE(req) {
-//   const origin = req.headers.get("origin");
-//   return withTimer(async () => {
-//     const auth = await verifyUser(req);
-//     if (auth.error) {
-//       return withCors(auth.error, origin);
-//     }
+export async function DELETE(req) {
+  console.log("start")
+  const origin = req.headers.get("origin");
+  
+  return withTimer(async () => {
+    const response = NextResponse.json({ success: true, message: "Logged out" });
+    const userToken = req.cookies.get("user_token")?.value;
+    const staffSession = req.cookies.get("session")?.value;
 
-//     const { token_hash } = auth;
+    // --- CASE 1: STAFF LOGOUT (Firebase) ---
+    if (staffSession) {
+      try {
+        const decoded = await admin.auth().verifySessionCookie(staffSession, true);
+        await admin.auth().revokeRefreshTokens(decoded.uid);
+      } catch (e) {
+        console.error("Firebase revocation failed or session expired");
+      }
+      
+      response.cookies.set("session", "", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        maxAge: 0,
+        path: "/",
+      });
+    }
 
-//     await db.query(
-//       `DELETE FROM user_token WHERE token=$1`,
-//       [token_hash]
-//     );
+    if (userToken) {
+      const hashedToken = crypto.createHash("sha256").update(userToken).digest("hex");
+      console.log(hashedToken)
+      await db.query(`DELETE FROM user_token WHERE token = $1`, [hashedToken]);
 
-//     const response = NextResponse.json({
-//       success: true,
-//       message: "Logged out"
-//     });
+      response.cookies.set("user_token", "", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        maxAge: 0,
+        path: "/",
+      });
+    }
 
-//     response.cookies.set("user_token", "", {
-//       httpOnly: true,
-//       secure: true,
-//       sameSite: "none",
-//       maxAge: 0,
-//       path: "/",
-//     });
-
-//     return withCors(response, origin);
-//   }, req, origin);
-// }
+    return withCors(response, origin);
+  }, req, origin);
+}
