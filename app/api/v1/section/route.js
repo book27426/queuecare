@@ -109,123 +109,74 @@ export async function POST(req) {
 
 export async function GET(req) {
   const origin = req.headers.get("origin");
-  // return withTimer(async () => {
+  return withTimer(async () => {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const name = searchParams.get("name");
-
     const searchName = name ?? "";
 
     const auth = await verifyStaff(req);
 
     // =================================================
-    // 🔎 SEARCH SECTION
+    // 🔎 SEARCH MODE (No ID provided)
     // =================================================
     if (!id) {
-      // PUBLIC SEARCH
+      // Public Search (Non-authenticated or Unauthorized)
       if (auth.error) {
-
         const { rows } = await db.query(
-          `
-          SELECT id, name, wait_default, predict_time
+          `SELECT id, name, wait_default, predict_time
           FROM section
           WHERE name ILIKE '%' || $1 || '%'
-          AND is_deleted = false
-          AND depth_int = 0
-          `,
+          AND is_deleted = false AND depth_int = 0`,
           [searchName]
         );
 
-        return json({
-          success: true,
-          mode: "public-search",
-          data: rows
-        }, 200, origin);
+        return json({ success: true, mode: "public-search", data: rows }, 200, origin);
       }
 
+      // Staff Search (Return only sections they have roles in)
       const sectionIds = auth.roles.map(r => r.section_id);
-
       const { rows } = await db.query(
-        `
-        SELECT id, name
-        FROM section
+        `SELECT id, name FROM section
         WHERE name ILIKE '%' || $1 || '%'
-        AND is_deleted = false
-        AND id = ANY($2)
-        `,
+        AND is_deleted = false AND id = ANY($2)`,
         [searchName, sectionIds]
       );
 
-      return json({
-        success: true,
-        mode: "staff-search",
-        data: rows
-      }, 200, origin);
+      return json({ success: true, mode: "staff-search", data: rows }, 200, origin);
     }
 
     // =================================================
-    // 📌 SECTION DETAIL
+    // 📌 DETAIL MODE (ID provided)
     // =================================================
-
     if (auth.error) return withCors(auth.error, origin);
 
     const sectionId = Number(id);
-
     if (!Number.isInteger(sectionId) || sectionId <= 0) {
-      return json({ success: false, message: "valid id is required" }, 400, origin);
+      return json({ success: false, message: "Valid ID is required" }, 400, origin);
     }
 
+    // 1. Initial Permission Check & Hierarchy Fetch
     const roleSectionIds = auth.roles?.map(r => r.section_id) || [];
-    // =================================================
-    // GET SECTION
-    // =================================================
-
-    const { rows: sectionRows } = await db.query(
-      `
-      SELECT *
-      FROM section
-      WHERE id=$1
-      AND is_deleted=false
-      `,
-      [sectionId]
-    );
-
-    if (!sectionRows.length) {
-      return json({ success: false, message: "Not found" }, 404, origin);
-    }
-
-    const section = sectionRows[0];
-
-    // =================================================
-    // GET SUBTREE (permission check)
-    // =================================================
-
-    const { rows: subtreeRows } = await db.query(
-      `
-      WITH RECURSIVE subtree AS (
-        SELECT id
-        FROM section
-        WHERE id = $1
-
-        UNION ALL
-
-        SELECT s.id
-        FROM section s
-        JOIN subtree st ON s.parent_id = st.id
+    
+    const [sectionRes, subtreeRes] = await Promise.all([
+      db.query(`SELECT * FROM section WHERE id=$1 AND is_deleted=false`, [sectionId]),
+      db.query(
+        `WITH RECURSIVE subtree AS (
+          SELECT id FROM section WHERE id = $1
+          UNION ALL
+          SELECT s.id FROM section s JOIN subtree st ON s.parent_id = st.id
+        ) SELECT id FROM subtree`,
+        [sectionId]
       )
-      SELECT id FROM subtree
-      `,
-      [sectionId]
-    );
+    ]);
 
-    const subtreeIds = subtreeRows.map(r => r.id);
+    if (!sectionRes.rows.length) return json({ success: false, message: "Not found" }, 404, origin);
 
+    const section = sectionRes.rows[0];
+    const subtreeIds = subtreeRes.rows.map(r => r.id);
     const hasDirectAccess = roleSectionIds.includes(sectionId);
-
-    const allowedSubSections = roleSectionIds.filter(id =>
-      subtreeIds.includes(id)
-    );
-
+    const allowedSubSections = roleSectionIds.filter(rid => subtreeIds.includes(rid));
     const hasSubAccess = allowedSubSections.length > 0;
 
     if (!auth.isSuperAdmin && !hasDirectAccess && !hasSubAccess) {
@@ -233,148 +184,67 @@ export async function GET(req) {
     }
 
     const fullAccess = auth.isSuperAdmin || hasDirectAccess;
+    const allowedSectionIds = fullAccess ? [sectionId] : allowedSubSections;
 
-    const allowedSectionIds = fullAccess
-      ? [sectionId]
-      : allowedSubSections;
+    // 2. Parallel Data Fetching
+    // We run these in parallel to maximize DB throughput
+    const [
+      subSectionsRaw,
+      queues,
+      staffs,
+      counters,
+      hourlyRows,
+      avgRows,
+      totalRows
+    ] = await Promise.all([
+      db.query(`SELECT id, name, parent_id FROM section WHERE parent_id = $1 AND is_deleted=false`, [sectionId]),
+      db.query(`SELECT * FROM queue WHERE section_id = ANY($1) AND status='waiting'`, [allowedSectionIds]),
+      db.query(
+        `SELECT s.id, s.first_name, s.last_name, sr.section_id
+        FROM staff s JOIN staff_role sr ON sr.staff_id = s.id
+        WHERE sr.section_id = ANY($1) AND s.is_deleted = false
+        ORDER BY s.first_name ASC`,
+        [allowedSectionIds]
+      ),
+      db.query(`SELECT id, name, section_id FROM counter WHERE section_id = ANY($1) ORDER BY name ASC`, [allowedSectionIds]),
+      db.query(
+        `SELECT TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
+                COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
+                COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS complete
+        FROM queue WHERE section_id = ANY($1) AND created_at >= CURRENT_DATE
+        GROUP BY 1 ORDER BY 1`,
+        [allowedSectionIds]
+      ),
+      db.query(
+        `SELECT AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60) AS avg_minutes
+        FROM queue WHERE section_id = ANY($1) AND status IN ('complete','transfer')
+        AND start_at IS NOT NULL AND end_at IS NOT NULL AND end_at >= CURRENT_DATE`,
+        [allowedSectionIds]
+      ),
+      db.query(
+        `SELECT COUNT(*) FILTER (WHERE status != 'cancel') AS total_new,
+                COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS total_complete
+        FROM queue WHERE section_id = ANY($1) AND created_at >= CURRENT_DATE`,
+        [allowedSectionIds]
+      )
+    ]);
 
-    // =================================================
-    // SUB SECTIONS
-    // =================================================
-
-    const { rows: subSectionsRaw } = await db.query(
-      `
-      SELECT id, name, parent_id
-      FROM section
-      WHERE parent_id = $1
-      AND is_deleted=false
-      `,
-      [sectionId]
-    );
-
-    const subSections = subSectionsRaw.map(sec => {
-
-      let hasAccess = false;
-
-      if (auth.isSuperAdmin || fullAccess) {
-        hasAccess = true;
-      } else {
-        hasAccess = roleSectionIds.includes(sec.id);
-      }
-
-      return {
-        ...sec,
-        has_access: hasAccess
-      };
-    });
-    
-    // =================================================
-    // QUEUES
-    // =================================================
-
-    const { rows: queues } = await db.query(
-      `
-      SELECT *
-      FROM queue
-      WHERE section_id = ANY($1)
-      AND status='waiting'
-      `,
-      [allowedSectionIds]
-    );
-
-    // =================================================
-    // STAFF
-    // =================================================
-
-    const { rows: staffs } = await db.query(
-      `
-      SELECT s.id, s.first_name, s.last_name, sr.section_id
-      FROM staff s
-      JOIN staff_role sr ON sr.staff_id = s.id
-      WHERE sr.section_id = ANY($1)
-      AND s.is_deleted = false
-      ORDER BY s.first_name ASC
-      `,
-      [allowedSectionIds]
-    );
-
-    // =================================================
-    // COUNTERS
-    // =================================================
-
-    const { rows: counters } = await db.query(
-      `
-      SELECT id, name, section_id
-      FROM counter
-      WHERE section_id = ANY($1)
-      ORDER BY name ASC
-      `,
-      [allowedSectionIds]
-    );
-
-    // =================================================
-    // HOURLY STATS
-    // =================================================
-
-    const { rows: hourlyRows } = await db.query(
-      `
-      SELECT
-        TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
-        COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
-        COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS complete
-      FROM queue
-      WHERE section_id = ANY($1)
-      AND created_at >= CURRENT_DATE
-      GROUP BY 1
-      ORDER BY 1
-      `,
-      [allowedSectionIds]
-    );
-
-    const { rows: avgRows } = await db.query(
-      `
-      SELECT
-        AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60)
-        AS avg_operation_minutes
-      FROM queue
-      WHERE section_id = ANY($1)
-      AND status IN ('complete','transfer')
-      AND start_at IS NOT NULL
-      AND end_at IS NOT NULL
-      AND end_at >= CURRENT_DATE
-      `,
-      [allowedSectionIds]
-    );
-
-    const { rows: totalRows } = await db.query(
-      `
-      SELECT
-        COUNT(*) FILTER (WHERE status != 'cancel') AS total_new,
-        COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS total_complete
-      FROM queue
-      WHERE section_id = ANY($1)
-      AND created_at >= CURRENT_DATE
-      `,
-      [allowedSectionIds]
-    );
-
+    // 3. Stats Calculation
     const now = new Date();
-    const hoursPassed = Math.max(now.getHours() - 8, 1);
-
+    const hoursPassed = Math.max(now.getHours() - 8, 1); // Assuming business day starts at 08:00
+    
     const stats = {
-      est_new_queue_per_hour:
-        Number(totalRows[0]?.total_new || 0) / hoursPassed,
-
-      est_complete_case_per_hour:
-        Number(totalRows[0]?.total_complete || 0) / hoursPassed,
-
-      est_avg_operation_time_per_case_minutes:
-        Number(avgRows[0]?.avg_operation_minutes) || 0,
-
-      hourly_breakdown: hourlyRows,
-
-      last_updated: new Date().toISOString()
+      est_new_queue_per_hour: Number(totalRows.rows[0]?.total_new || 0) / hoursPassed,
+      est_complete_case_per_hour: Number(totalRows.rows[0]?.total_complete || 0) / hoursPassed,
+      est_avg_operation_time_per_case_minutes: Number(avgRows.rows[0]?.avg_minutes) || 0,
+      hourly_breakdown: hourlyRows.rows,
+      last_updated: now.toISOString()
     };
+
+    const subSections = subSectionsRaw.rows.map(sec => ({
+      ...sec,
+      has_access: fullAccess || roleSectionIds.includes(sec.id)
+    }));
 
     return json({
       success: true,
@@ -383,13 +253,13 @@ export async function GET(req) {
       data: {
         section,
         sub_sections: subSections,
-        counters,
-        queues,
-        staffs,
+        counters: counters.rows,
+        queues: queues.rows,
+        staffs: staffs.rows,
         stats
       }
     }, 200, origin);
-  // }, req, origin);
+  }, req, origin);
 }
 
 export async function PUT(req) {
