@@ -26,11 +26,13 @@ export async function POST(req) {
   return withTimer(async () => {    
     try {
       // 2️. get body
-      const { name, section_id } = await req.json();
+      const formData = await req.formData();
+      const name = formData.get("name");
+      const section_id = Number(formData.get("section_id"));
 
-      if (!name ||!section_id || Number.isNaN(section_id))
-        return json({ success: false, message: "invalid body request" }, 400, origin);
-
+      if (!name || !section_id || Number.isNaN(section_id)) 
+        return json({ success: false, message: "Invalid body request: name and section_id required" }, 400, origin);
+      
       // 3️. verify staff permission
       const auth = await verifyStaff(req, section_id);
       if (auth.error) return auth.error;
