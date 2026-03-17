@@ -25,18 +25,11 @@ export async function POST(req) {
 
   return withTimer(async () => {    
     try {
-      // 1️. get section_id from URL
-      const { searchParams } = new URL(req.url);
-      const section_id = Number(searchParams.get("id"));
-
-      if (!section_id || Number.isNaN(section_id))
-        return json({ success: false, message: "valid section id required" }, 400, origin);
-
       // 2️. get body
-      const { name } = await req.json();
+      const { name, section_id } = await req.json();
 
-      if (!name)
-        return json({ success: false, message: "counter name required" }, 400, origin);
+      if (!name ||!section_id || Number.isNaN(section_id))
+        return json({ success: false, message: "invalid body request" }, 400, origin);
 
       // 3️. verify staff permission
       const auth = await verifyStaff(req, section_id);
@@ -46,7 +39,7 @@ export async function POST(req) {
         return json({ success: false, message: "Admin permission required" }, 403, origin);
       }
 
-        // 4️. insert counter
+      // 4️. insert counter
       const { rows } = await db.query(
         `INSERT INTO counter (name, section_id)
         VALUES ($1, $2)

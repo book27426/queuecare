@@ -112,7 +112,7 @@ export async function GET(req) {
   return withTimer(async () => {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    const name = searchParams.get("name") ?? "";
+    const searchName = searchParams.get("name") ?? "";
 
     const auth = await verifyStaff(req);
 
