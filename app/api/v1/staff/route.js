@@ -139,7 +139,7 @@ export async function GET(req) {
       if (auth.error) return withCors(auth.error, origin);
 
       const { rows } = await db.query(
-        `SELECT s.id, s.first_name, s.last_name, s.email 
+        `SELECT s.id, s.first_name, s.last_name, s.email, s.role 
          FROM staff s
          JOIN staff_role sr ON s.id = sr.staff_id
          WHERE sr.section_id = $1 
