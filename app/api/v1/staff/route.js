@@ -128,36 +128,34 @@ export async function GET(req) {
 
   return withTimer(async () => {
     try {
-      // 1. Verify staff
-      const auth = await verifyStaff(req);
-      if (auth.error)return withCors(auth.error, origin);
-
-      // 2. Get id params
       const { searchParams } = new URL(req.url);
       const section_id = searchParams.get("id");
-
+      
       if (!section_id) {
-        return json(
-          { "success": false, message: "id is required" }, 400, origin);
+        return json({ success: false, message: "id is required" }, 400, origin);
       }
 
-      const query = `
-        SELECT s.id, s.first_name, s.last_name, s.email 
-        FROM staff s
-        JOIN staff_role sr ON s.id = sr.staff_id
-        WHERE sr.section_id = $1 
-          AND s.is_deleted = false
-      `;
+      const auth = await verifyStaff(req,section_id);
+      if (auth.error) return withCors(auth.error, origin);
 
-    if (!rows.length) {
-      return json(
-        { "success": false, message: "Not found" }, 404, origin);
-    }
+      const { rows } = await db.query(
+        `SELECT s.id, s.first_name, s.last_name, s.email 
+         FROM staff s
+         JOIN staff_role sr ON s.id = sr.staff_id
+         WHERE sr.section_id = $1 
+           AND s.is_deleted = false`,
+        [section_id]
+      );
 
-    return json(
-      { success: true, data: rows[0] }, 200, origin);
-    } catch {
-      return json({ "success": false, message: "error" }, 500, origin);
+      if (rows.length === 0) {
+        return json({ success: false, message: "No staff found for this section" }, 404, origin);
+      }
+
+      return json({ success: true, data: rows }, 200, origin);
+
+    } catch (error) {
+      console.error("API Route Error:", error); // Essential for debugging
+      return json({ success: false, message: "Internal Server Error" }, 500, origin);
     }
   }, req, origin);
 }
