@@ -78,7 +78,8 @@ export async function PUT(req) {
         return json({ success: false, message: "valid counter id required" }, 400, origin);
 
       // 2️. body
-      const { name } = await req.json();
+      const formData = await req.formData();
+      const name = formData.get("name");
 
       if (!name)
         return json({ success: false, message: "name required" }, 400, origin);
