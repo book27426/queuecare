@@ -116,8 +116,31 @@ export async function GET(req) {
 
     const auth = await verifyStaff(req);
 
-    // SEARCH MODE (Keep your current logic here)
-    if (!id) { /* ... same as before ... */ }
+    if (!id) {
+      // Public Search (Non-authenticated or Unauthorized)
+      if (auth.error) {
+        const { rows } = await db.query(
+          `SELECT id, name, wait_default, predict_time
+          FROM section
+          WHERE name ILIKE '%' || $1 || '%'
+          AND is_deleted = false AND depth_int = 0`,
+          [searchName]
+        );
+
+        return json({ success: true, mode: "public-search", data: rows }, 200, origin);
+      }
+
+      // Staff Search (Return only sections they have roles in)
+      const sectionIds = auth.roles.map(r => r.section_id);
+      const { rows } = await db.query(
+        `SELECT id, name FROM section
+        WHERE name ILIKE '%' || $1 || '%'
+        AND is_deleted = false AND id = ANY($2)`,
+        [searchName, sectionIds]
+      );
+
+      return json({ success: true, mode: "staff-search", data: rows }, 200, origin);
+    }
 
     // DETAIL MODE
     if (auth.error) return withCors(auth.error, origin);
