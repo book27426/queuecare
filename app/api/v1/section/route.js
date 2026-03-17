@@ -206,7 +206,14 @@ export async function GET(req) {
         ORDER BY s.first_name ASC`,
         [allowedSectionIds]
       ),
-      db.query(`SELECT id, name, section_id FROM counter WHERE section_id = ANY($1) ORDER BY name ASC`, [allowedSectionIds]),
+      db.query(
+        `SELECT id, name, section_id,
+        EXISTS (SELECT 1 FROM staff_role WHERE counter_id = counter.id) as is_active
+        FROM counter 
+        WHERE section_id = ANY($1) 
+        ORDER BY name ASC`, 
+        [allowedSectionIds]
+      ),
       db.query(
         `SELECT TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
                 COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
