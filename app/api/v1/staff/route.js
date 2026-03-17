@@ -134,18 +134,20 @@ export async function GET(req) {
 
       // 2. Get id params
       const { searchParams } = new URL(req.url);
-      const id = searchParams.get("id");
+      const section_id = searchParams.get("id");
 
-      if (!id) {
+      if (!section_id) {
         return json(
           { "success": false, message: "id is required" }, 400, origin);
       }
 
-      const { rows } = await db.query(
-        `SELECT id, first_name, last_name, email FROM staff
-        WHERE id=$1 AND is_deleted=false`,
-        [id]
-      );
+      const query = `
+        SELECT s.id, s.first_name, s.last_name, s.email 
+        FROM staff s
+        JOIN staff_role sr ON s.id = sr.staff_id
+        WHERE sr.section_id = $1 
+          AND s.is_deleted = false
+      `;
 
     if (!rows.length) {
       return json(
