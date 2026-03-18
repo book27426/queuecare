@@ -145,7 +145,7 @@ export async function GET(req) {
       const staffAuth = await verifyStaff(req,section_id);
       if (!staffAuth.error) {
         const { rows } = await db.query(
-          `SELECT queue.id, queue.name AS queue_name, counter.name AS counter_name, q.status
+          `SELECT queue.id, queue.number, counter.name AS counter_name, q.status
           FROM queue q
           LEFT JOIN counter c ON q.section_id = c.section_id
           WHERE q.section_id = $1
