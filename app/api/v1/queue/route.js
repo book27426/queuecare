@@ -233,20 +233,30 @@ export async function PUT(req) {
       const { searchParams } = new URL(req.url);
       const id = Number(searchParams.get("id"));
 
-      const queueCheck = await client.query(
-        `SELECT id, section_id, status
-        FROM queue
-        WHERE id = $1
-        FOR UPDATE`,
-        [id]
-      );
+      const { status, queue_detail, get_section_id, next, counter_id_target } = await req.json();
+      const allowedStatus = ["no_show", "complete", "serving", "transfer"];
 
-      if (!queueCheck.rowCount) {
-        await client.query("ROLLBACK");
-        return json({ success: false, message: "queue not found" }, 404, origin);
+      if (!allowedStatus.includes(status)) {
+        return json({ success: false, message: "invalid status" }, 400, origin);
       }
+      let section_id = get_section_id
+      if (!section_id) {
+        const queueCheck = await client.query(
+          `SELECT id, section_id, status
+          FROM queue
+          WHERE id = $1
+          FOR UPDATE`,
+          [id]
+        );
+        section_id = queueCheck.section_id
+        if (!queueCheck.rowCount) {
+          await client.query("ROLLBACK");
+          return json({ success: false, message: "queue not found" }, 404, origin);
+        }
+      }
+
       // 1. Verify staff
-      const auth = await verifyStaff(req,queueCheck.section_id);
+      const auth = await verifyStaff(req,section_id);
       if (!auth.error) {
         await client.query("BEGIN");
         
@@ -254,14 +264,6 @@ export async function PUT(req) {
         const counter_id = auth.counter_id;
 
         // 2. Get request body
-        const { status, queue_detail, section_id, next, counter_id_target } = await req.json();
-
-        const allowedStatus = ["no_show", "complete", "serving", "transfer"];
-
-        if (!allowedStatus.includes(status)) {
-          await client.query("ROLLBACK");
-          return json({ success: false, message: "invalid status" }, 400, origin);
-        }
 
         let result;
         
@@ -334,6 +336,7 @@ export async function PUT(req) {
               VALUES ($1, $2, $3)`,
               [counter_id_target, staff_id, section_id]
             );
+
           }else if(counter_id!=counter_id_target){
             await client.query("ROLLBACK");
             return json({ success: false, message: "invalid target counter" }, 400, origin);
