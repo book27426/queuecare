@@ -138,12 +138,12 @@ export async function GET(req) {
   return withTimer(async () => {
     try {
       const guest_token  = req.cookies.get("guest_token")?.value;
-
-      const staffAuth = await verifyStaff(req);
       // 🧑‍💼 STAFF VIEW
+      const { searchParams } = new URL(req.url);
+      const section_id = Number(searchParams.get("id"));
+
+      const staffAuth = await verifyStaff(req,section_id);
       if (!staffAuth.error) {
-        const { searchParams } = new URL(req.url);
-        const section_id = Number(searchParams.get("id"));
         const { rows } = await db.query(
           `SELECT *
           FROM queue
