@@ -233,13 +233,12 @@ export async function PUT(req) {
       const { searchParams } = new URL(req.url);
       const id = Number(searchParams.get("id"));
 
-      const { status, queue_detail, get_section_id, next, counter_id_target } = await req.json();
+      let { status, queue_detail, section_id, next, counter_id_target } = await req.json();
       const allowedStatus = ["no_show", "complete", "serving", "transfer"];
 
       if (!allowedStatus.includes(status)) {
         return json({ success: false, message: "invalid status" }, 400, origin);
       }
-      let section_id = get_section_id
       if (!section_id) {
         const queueCheck = await client.query(
           `SELECT id, section_id, status
