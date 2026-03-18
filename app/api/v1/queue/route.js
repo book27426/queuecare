@@ -233,7 +233,7 @@ export async function PUT(req) {
       const { searchParams } = new URL(req.url);
       const id = Number(searchParams.get("id"));
 
-      let { status, queue_detail, section_id, next, counter_id_target } = await req.json();
+      let { status, queue_detail, section_id, next, counter_id } = await req.json();
       const allowedStatus = ["no_show", "complete", "serving", "transfer"];
 
       if (!allowedStatus.includes(status)) {
@@ -260,7 +260,7 @@ export async function PUT(req) {
         await client.query("BEGIN");
         
         const staff_id = auth.staff_id;
-        const counter_id = auth.counter_id;
+        const staff_counter_id = auth.counter_id;
 
         // 2. Get request body
 
@@ -329,16 +329,18 @@ export async function PUT(req) {
         }
         if (next||status === "serving") {
           // 3.3 UPDATE queue serving
-          if(!counter_id){
+          if(!staff_counter_id){
             await client.query(
               `UPDATE staff_role 
               SET counter_id = $1
               WHERE staff_id = $2
               AND section_id = $3`,
-              [counter_id_target, staff_id, section_id]
+              [counter_id, staff_id, section_id]
             );
 
-          }else if(counter_id!=counter_id_target){
+          }else if(staff_counter_id!=counter_id){
+            console.log(staff_counter_id)
+            console.log(counter_id)
             await client.query("ROLLBACK");
             return json({ success: false, message: "invalid target counter" }, 400, origin);
           }
@@ -352,14 +354,19 @@ export async function PUT(req) {
             LIMIT 1`,
             [section_id]
           );
-          const queue_id = rows[0].id
-          result = await client.query(
-            `UPDATE queue
-            SET status='serving', start_at=NOW(), staff_id=$2
-            WHERE id=$1 AND status='waiting'
-            RETURNING *`,
-            [queue_id, staff_id]
-          );
+          if(!rows[0]){
+
+          }else{
+            const queue_id = rows[0].id
+          
+            result = await client.query(
+              `UPDATE queue
+              SET status='serving', start_at=NOW(), staff_id=$2
+              WHERE id=$1 AND status='waiting'
+              RETURNING *`,
+              [queue_id, staff_id]
+            );
+          }
         }else{
           await client.query(
             `UPDATE staff_role 
