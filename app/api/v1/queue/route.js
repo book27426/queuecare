@@ -233,10 +233,6 @@ export async function PUT(req) {
       const { searchParams } = new URL(req.url);
       const id = Number(searchParams.get("id"));
 
-      if (!Number.isInteger(id) || id <= 0) {
-        return json({ success: false, message: "valid id is required" }, 400, origin);
-      }
-
       const queueCheck = await client.query(
         `SELECT id, section_id, status
         FROM queue
@@ -343,12 +339,22 @@ export async function PUT(req) {
             await client.query("ROLLBACK");
             return json({ success: false, message: "invalid target counter" }, 400, origin);
           }
+          const { rows } = await client.query(
+            `SELECT id
+            FROM queue
+            WHERE section_id = $1
+            AND status = 'waiting'
+            ORDER BY id
+            LIMIT 1`,
+            [section_id]
+          );
+          const queue_id = rows[0].id
           result = await client.query(
             `UPDATE queue
             SET status='serving', start_at=NOW(), staff_id=$2
             WHERE id=$1 AND status='waiting'
             RETURNING *`,
-            [id, staff_id]
+            [queue_id, staff_id]
           );
         }else{
           await client.query(
