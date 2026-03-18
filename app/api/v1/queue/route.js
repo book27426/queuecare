@@ -147,7 +147,7 @@ export async function GET(req) {
         const { rows } = await db.query(
           `SELECT q.id, q.number, c.name AS counter_name, q.status
           FROM queue q
-          LEFT JOIN counter c ON q.section_id = c.section_id
+          LEFT JOIN counter c ON q.staff_id = c.staff_id  
           WHERE q.section_id = $1
             AND q.status IN ('waiting', 'serving')
             AND q.queue_date = CURRENT_DATE
