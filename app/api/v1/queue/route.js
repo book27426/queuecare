@@ -334,7 +334,6 @@ export async function PUT(req) {
               VALUES ($1, $2, $3)`,
               [counter_id_target, staff_id, section_id]
             );
-            counter_id = counter_id_target
           }else if(counter_id!=counter_id_target){
             await client.query("ROLLBACK");
             return json({ success: false, message: "invalid target counter" }, 400, origin);
