@@ -331,8 +331,10 @@ export async function PUT(req) {
           // 3.3 UPDATE queue serving
           if(!counter_id){
             await client.query(
-              `INSERT INTO staff_role (counter_id, staff_id, section_id)
-              VALUES ($1, $2, $3)`,
+              `UPDATE staff_role 
+              SET counter_id = $1
+              WHERE staff_id = $2
+              AND section_id = $3`,
               [counter_id_target, staff_id, section_id]
             );
 
@@ -345,6 +347,7 @@ export async function PUT(req) {
             FROM queue
             WHERE section_id = $1
             AND status = 'waiting'
+            AND queue_date = CURRENT_DATE
             ORDER BY id
             LIMIT 1`,
             [section_id]
@@ -359,11 +362,11 @@ export async function PUT(req) {
           );
         }else{
           await client.query(
-            `DELETE FROM staff_role
-            WHERE counter_id = $1
-            AND staff_id = $22
-            AND section_id = $3`,
-            [counter_id,staff_id, section_id]
+            `UPDATE staff_role 
+              SET counter_id = NULL
+              WHERE staff_id = $1
+              AND section_id = $2`,
+            [staff_id, section_id]
           );
         }
 
