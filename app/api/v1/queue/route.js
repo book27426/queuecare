@@ -145,13 +145,15 @@ export async function GET(req) {
       const staffAuth = await verifyStaff(req,section_id);
       if (!staffAuth.error) {
         const { rows } = await db.query(
-          `SELECT *
-          FROM queue
-          WHERE section_id = $1
-            AND status IN ('waiting', 'serving')
+          `SELECT queue.id, queue.name AS queue_name, counter.name AS counter_name, q.status
+          FROM queue q
+          LEFT JOIN counter c ON q.section_id = c.section_id
+          WHERE q.section_id = $1
+            AND q.status IN ('waiting', 'serving')
+            AND q.queue_date = CURRENT_DATE
           ORDER BY 
-            CASE WHEN status = 'serving' THEN 0 ELSE 1 END, 
-            id ASC`,
+            q.id ASC;
+          `,
           [section_id]
         );
         
