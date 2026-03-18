@@ -255,10 +255,10 @@ export async function PUT(req) {
         await client.query("BEGIN");
         
         const staff_id = auth.staff_id;
-        let counter_id = auth.counter_id;
+        const counter_id = auth.counter_id;
 
         // 2. Get request body
-        const { status, queue_detail, section_id, next } = await req.json();
+        const { status, queue_detail, section_id, next, counter_id_target } = await req.json();
 
         const allowedStatus = ["no_show", "complete", "serving", "transfer"];
 
@@ -284,46 +284,6 @@ export async function PUT(req) {
             SET status='complete', detail=$1, end_at=NOW()
             WHERE id=$2 AND status='serving' AND staff_id=$3`,
             [queue_detail, id, staff_id]
-          );
-        } 
-        if (next||status === "serving") {
-          // 3.3 UPDATE queue serving
-          if(!counter_id){
-            const { rows } = await client.query(
-              `SELECT id
-              FROM counter
-              WHERE section_id = $1
-              AND is_active = true
-              ORDER BY id
-              LIMIT 1`,
-              [section_id]
-            );
-
-            if (!rows.length) {
-              await client.query("ROLLBACK");
-              return json(
-                { success: false, message: "No counter available" },
-                400,
-                origin
-              );
-            }
-
-            counter_id = rows[0].id;
-
-            await client.query(
-              `UPDATE staff_role
-              SET counter_id = $1
-              WHERE staff_id = $2
-              AND section_id = $3`,
-              [counter_id, staff_id, section_id]
-            );
-          }
-          result = await client.query(
-            `UPDATE queue
-            SET status='serving', start_at=NOW(), staff_id=$2
-            WHERE id=$1 AND status='waiting'
-            RETURNING *`,
-            [id, staff_id]
           );
         } else if (status === "transfer") {
 
@@ -369,9 +329,35 @@ export async function PUT(req) {
               oldQueue.token
             ]
           );
-        } else {
-          await client.query("ROLLBACK");
-          return json({ success: false, message: "invalid status" }, 400, origin);
+        }
+        if (next||status === "serving") {
+          // 3.3 UPDATE queue serving
+          if(!counter_id){
+            await client.query(
+              `INSERT INTO staff_role (counter_id, staff_id, section_id)
+              VALUES ($1, $2, $3)`,
+              [counter_id_target, staff_id, section_id]
+            );
+            counter_id = counter_id_target
+          }else if(counter_id!=counter_id_target){
+            await client.query("ROLLBACK");
+            return json({ success: false, message: "invalid target counter" }, 400, origin);
+          }
+          result = await client.query(
+            `UPDATE queue
+            SET status='serving', start_at=NOW(), staff_id=$2
+            WHERE id=$1 AND status='waiting'
+            RETURNING *`,
+            [id, staff_id]
+          );
+        }else{
+          await client.query(
+            `DELETE FROM staff_role
+            WHERE counter_id = $1
+            AND staff_id = $22
+            AND section_id = $3`,
+            [counter_id,staff_id, section_id]
+          );
         }
 
         if (!result.rowCount) {

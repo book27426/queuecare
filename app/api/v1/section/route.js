@@ -149,49 +149,63 @@ export async function GET(req) {
 
     const mainQuery = `
       WITH RECURSIVE 
-      subtree AS (
-          SELECT id FROM section WHERE id = $1 AND is_deleted = false
-          UNION ALL
-          SELECT s.id FROM section s JOIN subtree st ON s.parent_id = st.id WHERE s.is_deleted = false
-      ),
-      allowed_ids AS (
-          SELECT id FROM subtree 
-          WHERE id = ANY($2) OR $3 = true
-      ),
-      stats_agg AS (
-          SELECT 
-            AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60) FILTER (WHERE status IN ('complete','transfer')) as avg_op,
-            COUNT(*) FILTER (WHERE status != 'cancel' AND created_at >= CURRENT_DATE) as total_new,
-            COUNT(*) FILTER (WHERE status IN ('complete','transfer') AND created_at >= CURRENT_DATE) as total_complete
-          FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids)
-      )
-      SELECT 
-        (SELECT row_to_json(s) FROM (SELECT * FROM section WHERE id = $1) s) as section,
-        (SELECT json_agg(sub) FROM (
-            SELECT id, name, parent_id FROM section 
-            WHERE parent_id = $1 AND is_deleted = false
-        ) sub) as sub_sections,
-        (SELECT json_agg(c) FROM (
-            SELECT id, name, section_id, 
-            EXISTS (SELECT 1 FROM staff_role sr WHERE sr.counter_id = counter.id) as is_active
-            FROM counter WHERE section_id = ANY(SELECT id FROM allowed_ids)
-        ) c) as counters,
-        (SELECT json_agg(q) FROM (
-            SELECT * FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids) AND status = 'waiting'
-        ) q) as queues,
-        (SELECT json_agg(st) FROM (
-            SELECT s.id, s.first_name, s.last_name, sr.section_id
-            FROM staff s JOIN staff_role sr ON sr.staff_id = s.id
-            WHERE sr.section_id = ANY(SELECT id FROM allowed_ids) AND s.is_deleted = false
-        ) st) as staffs,
-        (SELECT json_agg(h) FROM (
-            SELECT TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
-                   COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
-                   COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS complete
-            FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids) AND created_at >= CURRENT_DATE
-            GROUP BY 1 ORDER BY 1
-        ) h) as hourly_breakdown,
-        (SELECT row_to_json(stats_agg) FROM stats_agg) as raw_stats;
+        subtree AS (
+            SELECT id FROM section WHERE id = $1 AND is_deleted = false
+            UNION ALL
+            SELECT s.id FROM section s JOIN subtree st ON s.parent_id = st.id WHERE s.is_deleted = false
+        ),
+        allowed_ids AS (
+            SELECT id FROM subtree 
+            WHERE id = ANY($2) OR $3 = true
+        ),
+        stats_agg AS (
+            SELECT 
+              AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60) FILTER (WHERE status IN ('complete','transfer')) as avg_op,
+              COUNT(*) FILTER (WHERE status != 'cancel' AND created_at >= CURRENT_DATE) as total_new,
+              COUNT(*) FILTER (WHERE status IN ('complete','transfer') AND created_at >= CURRENT_DATE) as total_complete
+            FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids)
+        )
+        SELECT 
+          (SELECT row_to_json(s) FROM (SELECT * FROM section WHERE id = $1) s) as section,
+          (SELECT json_agg(sub) FROM (
+              SELECT id, name, parent_id FROM section 
+              WHERE parent_id = $1 AND is_deleted = false
+          ) sub) as sub_sections,
+          (SELECT json_agg(c) FROM (
+              SELECT 
+                id, 
+                name, 
+                section_id, 
+                EXISTS (
+                  SELECT 1 
+                  FROM staff_role sr 
+                  WHERE sr.counter_id = counter.id
+                ) as is_active 
+              FROM counter 
+              WHERE section_id = ANY(SELECT id FROM allowed_ids)
+              -- Often good to filter out deleted counters here too
+              AND is_deleted = false 
+          ) c) as counters,
+          (SELECT json_agg(q) FROM (
+              SELECT * FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids) AND status = 'waiting'
+          ) q) as queues,
+          (SELECT json_agg(st) FROM (
+              SELECT s.id, s.first_name, s.last_name, sr.section_id, sr.counter_id
+              FROM staff s 
+              JOIN staff_role sr ON sr.staff_id = s.id
+              WHERE sr.section_id = ANY(SELECT id FROM allowed_ids) 
+              AND s.is_deleted = false
+          ) st) as staffs,
+          (SELECT json_agg(h) FROM (
+              SELECT TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
+                    COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
+                    COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS complete
+              FROM queue 
+              WHERE section_id = ANY(SELECT id FROM allowed_ids) 
+              AND created_at >= CURRENT_DATE
+              GROUP BY 1 ORDER BY 1
+          ) h) as hourly_breakdown,
+          (SELECT row_to_json(stats_agg) FROM stats_agg) as raw_stats;
     `;
 
     const { rows } = await db.query(mainQuery, [sectionId, roleSectionIds, auth.isSuperAdmin]);
