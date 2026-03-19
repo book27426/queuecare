@@ -239,19 +239,20 @@ export async function PUT(req) {
       if (!allowedStatus.includes(status)) {
         return json({ success: false, message: "invalid status" }, 400, origin);
       }
-        const queueCheck = await client.query(
-          `SELECT id, section_id, status
-          FROM queue
-          WHERE id = $1
-          FOR UPDATE`,
-          [id]
-        );
+        
+      const queueCheck = await client.query(
+        `SELECT id, section_id, status
+        FROM queue
+        WHERE id = $1
+        FOR UPDATE`,
+        [id]
+      );
 
-        if (!queueCheck.rowCount) {
-          await client.query("ROLLBACK");
-          return json({ success: false, message: "queue not found" }, 404, origin);
-        }
-        const queuesection_id = queueCheck.rows[0].section_id;
+      if (!queueCheck.rowCount) {
+        await client.query("ROLLBACK");
+        return json({ success: false, message: "queue not found" }, 404, origin);
+      }
+      const queuesection_id = queueCheck.rows[0].section_id;
 
       // 1. Verify staff
       const auth = await verifyStaff(req,queuesection_id);
