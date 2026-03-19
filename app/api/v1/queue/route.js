@@ -355,7 +355,13 @@ export async function PUT(req) {
             [section_id]
           );
           if(!rows[0]){
-
+            await client.query(
+              `UPDATE staff_role 
+                SET counter_id = NULL
+                WHERE staff_id = $1
+                AND section_id = $2`,
+              [staff_id, section_id]
+            );
           }else{
             const queue_id = rows[0].id
           
