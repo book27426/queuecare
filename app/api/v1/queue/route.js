@@ -233,13 +233,12 @@ export async function PUT(req) {
       const { searchParams } = new URL(req.url);
       const id = Number(searchParams.get("id"));
 
-      let { status, queue_detail, section_id, next, counter_id } = await req.json();
+      const { status, queue_detail, section_id, next, counter_id } = await req.json();
       const allowedStatus = ["no_show", "complete", "serving", "transfer"];
 
       if (!allowedStatus.includes(status)) {
         return json({ success: false, message: "invalid status" }, 400, origin);
       }
-      if (!section_id) {
         const queueCheck = await client.query(
           `SELECT id, section_id, status
           FROM queue
@@ -247,15 +246,15 @@ export async function PUT(req) {
           FOR UPDATE`,
           [id]
         );
-        section_id = queueCheck.section_id
+
         if (!queueCheck.rowCount) {
           await client.query("ROLLBACK");
           return json({ success: false, message: "queue not found" }, 404, origin);
         }
-      }
+        const queuesection_id = queueCheck.rows[0].section_id;
 
       // 1. Verify staff
-      const auth = await verifyStaff(req,section_id);
+      const auth = await verifyStaff(req,queuesection_id);
       if (!auth.error) {
         await client.query("BEGIN");
         
@@ -326,6 +325,7 @@ export async function PUT(req) {
               oldQueue.token
             ]
           );
+          console.log(section_id)
         }
         if (next||status === "serving") {
           // 3.3 UPDATE queue serving
@@ -335,7 +335,7 @@ export async function PUT(req) {
               SET counter_id = $1
               WHERE staff_id = $2
               AND section_id = $3`,
-              [counter_id, staff_id, section_id]
+              [counter_id, staff_id, queuesection_id]
             );
 
           }else if(staff_counter_id!=counter_id){
@@ -352,38 +352,32 @@ export async function PUT(req) {
             AND queue_date = CURRENT_DATE
             ORDER BY id
             LIMIT 1`,
-            [section_id]
+            [queuesection_id]
           );
           if(!rows[0]){
             await client.query(
-              `UPDATE staff_role 
-                SET counter_id = NULL
-                WHERE staff_id = $1
-                AND section_id = $2`,
-              [staff_id, section_id]
+              `UPDATE staff_role SET counter_id = NULL WHERE staff_id = $1 AND section_id = $2`,
+              [staff_id, queuesection_id]
             );
+        
+            await client.query("COMMIT"); // Commit the counter release
+            return json({ success: true, message: "No patients waiting", data: null }, 200, origin);//but it dont have logz
           }else{
             const queue_id = rows[0].id
           
             result = await client.query(
-              `UPDATE queue
-              SET status='serving', start_at=NOW(), staff_id=$2
-              WHERE id=$1 AND status='waiting'
-              RETURNING *`,
+              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status='waiting' RETURNING *`,
               [queue_id, staff_id]
             );
           }
         }else{
           await client.query(
-            `UPDATE staff_role 
-              SET counter_id = NULL
-              WHERE staff_id = $1
-              AND section_id = $2`,
-            [staff_id, section_id]
+            `UPDATE staff_role SET counter_id = NULL WHERE staff_id = $1 AND section_id = $2`,
+            [staff_id, queuesection_id]
           );
         }
 
-        if (!result.rowCount) {
+        if (!result || !result.rowCount) {
           await client.query("ROLLBACK");
           return json({ success: false, message: "queue not found or invalid state" }, 400, origin);
         }
@@ -452,6 +446,7 @@ export async function PUT(req) {
       }
 
       await client.query("ROLLBACK");
+      console.log("Unauthorized")
       return json({ success: false, message: "Unauthorized" }, 401, origin);
     } catch (err) {
       console.error("Update queue error:", err);
