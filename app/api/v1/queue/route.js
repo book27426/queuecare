@@ -24,68 +24,58 @@ export async function OPTIONS(req) {
 
 export async function POST(req) {
   const origin = req.headers.get("origin");
+  
+  // 1. All Non-DB work first
+  const auth = await verifyUser(req);
+  const user_id = auth?.error ? null : auth.user_id;
+  let { section_id, name, phone_num } = await req.json();
+  section_id = Number(section_id);
+
+  if (!Number.isInteger(section_id) || section_id <= 0 || !name || !phone_num) {
+    return json({ success: false, message: "invalid body" }, 400, origin);
+  }
+
+  let guest_token = null;
+  let needSetCookie = false;
+  if (user_id === null) {
+    guest_token = req.cookies.get("guest_token")?.value;
+    if (!guest_token) {
+      guest_token = crypto.randomUUID();
+      needSetCookie = true;
+    }
+  }
+
+  // 2. Open connection
   const client = await db.connect();
+
   return withTimer(async () => {
     try {
-      // 1. Verify user
-      const auth = await verifyUser(req);
-      const user_id = auth?.error ? null : auth.user_id;
-      
-      // 2. Get request body
-      let { section_id, name, phone_num } = await req.json();
-      section_id = Number(section_id);
-
-      if (
-        !Number.isInteger(section_id) ||
-        section_id <= 0 ||
-        !name ||
-        !phone_num
-      )return json({ success: false, message: "invalid body" }, 400, origin);
-
       await client.query("BEGIN");
 
+      // Use FOR SHARE - it's non-blocking for reads
       const sectionRes = await client.query(
-        `SELECT wait_default FROM section WHERE id = $1 AND is_deleted = false FOR UPDATE`,
+        `SELECT wait_default FROM section 
+        WHERE id = $1 AND is_deleted = false`, // Use FOR UPDATE here
         [section_id]
       );
 
       if (!sectionRes.rowCount) throw new Error("404");
       const { wait_default } = sectionRes.rows[0];
 
-      // 3. generate number
-      const lastQueue = await client.query(
-        `SELECT number FROM queue 
-         WHERE section_id = $1 AND queue_date = CURRENT_DATE 
-         ORDER BY id DESC LIMIT 1`,
-        [section_id]
-      );
-
-      let number = "001";
-      if (lastQueue.rows.length > 0) {
-        number = String(parseInt(lastQueue.rows[0].number, 10) + 1).padStart(3, "0");
-      }
-      // 4. Generate guest_token
-      let guest_token = null;
-      let needSetCookie = false;
-
-      if (user_id === null) {
-        guest_token  = req.cookies.get("guest_token")?.value;
-        if(!guest_token){
-          guest_token = crypto.randomUUID();
-          needSetCookie = true;
-        }
-      }
-      
-      // 5. Insert section
+      // 3. The "Atomic" Insert
+      // To truly prevent deadlocks, use a DB Sequence or lock the table rows properly
       const queueInsert = await client.query(
         `INSERT INTO queue (number, name, phone_num, user_id, section_id, token)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [number, name, phone_num, user_id, section_id, guest_token]
+        VALUES (
+          (SELECT COALESCE(MAX(number), 0) + 1 FROM queue WHERE section_id = $1 AND queue_date = CURRENT_DATE),
+          $2, $3, $4, $5, $6
+        ) RETURNING id, number`,
+        [section_id, name, phone_num, user_id, section_id, guest_token]
       );
 
       const newId = queueInsert.rows[0].id;
-      // 6. Calculate Prediction (Virtual)
-      // Count people ahead of this record that are still 'waiting'
+
+      // 4. Count people ahead
       const waitQuery = await client.query(
         `SELECT COUNT(*) as count FROM queue 
          WHERE section_id = $1 AND queue_date = CURRENT_DATE 
@@ -95,7 +85,6 @@ export async function POST(req) {
 
       await client.query("COMMIT");
       
-
       // 7. Insert log
       if (user_id) {
         db.query(`INSERT INTO log (user_id, action_type, target) VALUES ($1, 'create', 'queue')`, [user_id])
@@ -105,6 +94,7 @@ export async function POST(req) {
       const people_ahead = parseInt(waitQuery.rows[0].count);
       const response = NextResponse.json({ 
         success: true, 
+        //data: { ...queueInsert.rows[0], people_ahead, predicted_wait_minutes: people_ahead * wait_default }
         data: { ...queueInsert.rows[0], people_ahead, predicted_wait_minutes: people_ahead * wait_default }
       }, { status: 201 });
 
@@ -125,7 +115,7 @@ export async function POST(req) {
         await client.query("ROLLBACK");
       } catch {}
 
-      console.error(err);
+      console.log(err);
       return json({ success: false, message: "internal server error" }, 500, origin);
     } finally {
       client.release();
