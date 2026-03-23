@@ -101,7 +101,7 @@ export async function PUT(req) {
 // GET /api/v1/sections/:id/live
 export async function GET(req) {
   const origin = req.headers.get("origin");
-  // return withTimer(async () => {
+  return withTimer(async () => {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const auth = await verifyStaff(req);
@@ -116,38 +116,42 @@ export async function GET(req) {
       ),
       allowed_ids AS (SELECT id FROM subtree WHERE id = ANY($2) OR $3 = true)
       SELECT 
+        -- 1. Counters List
         (SELECT json_agg(c) FROM (
             SELECT id, name, section_id, 
             EXISTS (SELECT 1 FROM staff_role sr WHERE sr.counter_id = counter.id) as is_active 
             FROM counter WHERE section_id = ANY(SELECT id FROM allowed_ids) AND is_deleted = false
         ) c) as counters,
+
+        -- 2. Waiting Queues (The live list)
         (SELECT json_agg(q) FROM (
             SELECT id, number, name, status, section_id FROM queue 
             WHERE section_id = ANY(SELECT id FROM allowed_ids) AND status = 'waiting'
             ORDER BY created_at ASC
         ) q) as queues,
+
+        -- 3. Dynamic Stats (Last 60 Minutes Focus)
         (SELECT row_to_json(stats) FROM (
             SELECT 
+              -- Average service time (total history today)
               AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60) 
-                FILTER (WHERE status IN ('complete','transfer')) as avg_op,
-              COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as total_today,
-              COUNT(*) FILTER (WHERE status IN ('complete','transfer') AND created_at >= CURRENT_DATE) as total_done,
-              COUNT(*) FILTER (WHERE status IN ('waiting', 'serving')) as total_left
+                FILTER (WHERE status IN ('complete','transfer') AND created_at >= CURRENT_DATE) as avg_op,
+              
+              -- Current backlog (Still in the system)
+              COUNT(*) FILTER (WHERE status IN ('waiting', 'serving')) as total_left,
+
+              -- Increase: Tickets created in the last 60 minutes
+              COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '1 hour') as inc_last_hour,
+
+              -- Clear: Tickets finished in the last 60 minutes
+              COUNT(*) FILTER (WHERE status IN ('complete','transfer') AND end_at >= NOW() - INTERVAL '1 hour') as clear_last_hour
             FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids)
         ) stats) as raw_stats;
     `;
 
     const { rows } = await db.query(liveQuery, [sectionId, roleSectionIds, auth.isSuperAdmin]);
     const result = rows[0];
-
-    // --- Rate Logic ---
-    const now = new Date();
-    // Assuming operation starts at 08:00. Use at least 1 to avoid division by zero.
-    const hoursPassed = Math.max((now.getTime() - new Date().setHours(8, 0, 0, 0)) / 3600000, 0.5);
     const rawStats = result.raw_stats || {};
-
-    const totalToday = Number(rawStats.total_today) || 0;
-    const totalDone = Number(rawStats.total_done) || 0;
 
     return json({
       success: true,
@@ -155,22 +159,12 @@ export async function GET(req) {
         counters: result.counters || [],
         queues: result.queues || [],
         stats: {
-          // The "Left in Queue" for today
           queues_remaining: Number(rawStats.total_left) || 0,
-          
-          // Arrival Rate: How many new people come per hour
-          increase_rate_per_hour: parseFloat((totalToday / hoursPassed).toFixed(2)),
-          
-          // Throughput Rate: How many people the staff clears per hour
-          clear_rate_per_hour: parseFloat((totalDone / hoursPassed).toFixed(2)),
-          
-          // Wait Time: Avg time a patient/customer spends with staff
-          est_avg_operation_time_minutes: Math.round(Number(rawStats.avg_op) || 0),
-          
-          // Total flow count
-          total_today: totalToday
+          increase_last_hour: Number(rawStats.inc_last_hour) || 0,
+          clear_last_hour: Number(rawStats.clear_last_hour) || 0,
+          avg_operation_time_minutes: Math.round(Number(rawStats.avg_op) || 0)
         }
       }
     }, 200, origin);
-  // }, req, origin);
+  }, req, origin);
 }
