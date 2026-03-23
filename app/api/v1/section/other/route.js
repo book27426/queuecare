@@ -99,9 +99,9 @@ export async function PUT(req) {
 }
 
 // GET /api/v1/sections/:id/live
-export default async function GET(req) {
+export async function GET(req) {
   const origin = req.headers.get("origin");
-  return withTimer(async () => {
+  // return withTimer(async () => {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const auth = await verifyStaff(req);
@@ -128,15 +128,11 @@ export default async function GET(req) {
         ) q) as queues,
         (SELECT row_to_json(stats) FROM (
             SELECT 
-              -- 1. Average Operation Time (Minutes)
               AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60) 
                 FILTER (WHERE status IN ('complete','transfer')) as avg_op,
-              -- 2. Total New Tickets Today
               COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as total_today,
-              -- 3. Total Finished Today
               COUNT(*) FILTER (WHERE status IN ('complete','transfer') AND created_at >= CURRENT_DATE) as total_done,
-              -- 4. Current Remaining (Waiting + Calling)
-              COUNT(*) FILTER (WHERE status IN ('waiting', 'calling')) as total_left
+              COUNT(*) FILTER (WHERE status IN ('waiting', 'serving')) as total_left
             FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids)
         ) stats) as raw_stats;
     `;
@@ -176,5 +172,5 @@ export default async function GET(req) {
         }
       }
     }, 200, origin);
-  }, req, origin);
+  // }, req, origin);
 }
