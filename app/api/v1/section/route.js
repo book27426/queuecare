@@ -147,104 +147,28 @@ export async function GET(req) {
     const sectionId = Number(id);
     const roleSectionIds = auth.roles?.map(r => r.section_id) || [];
 
-    const mainQuery = `
-      WITH RECURSIVE 
-        subtree AS (
-            SELECT id FROM section WHERE id = $1 AND is_deleted = false
-            UNION ALL
-            SELECT s.id FROM section s JOIN subtree st ON s.parent_id = st.id WHERE s.is_deleted = false
-        ),
-        allowed_ids AS (
-            SELECT id FROM subtree 
-            WHERE id = ANY($2) OR $3 = true
-        ),
-        stats_agg AS (
-            SELECT 
-              AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60) FILTER (WHERE status IN ('complete','transfer')) as avg_op,
-              COUNT(*) FILTER (WHERE status != 'cancel' AND created_at >= CURRENT_DATE) as total_new,
-              COUNT(*) FILTER (WHERE status IN ('complete','transfer') AND created_at >= CURRENT_DATE) as total_complete
-            FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids)
-        )
-        SELECT 
-          (SELECT row_to_json(s) FROM (SELECT * FROM section WHERE id = $1) s) as section,
-          (SELECT json_agg(sub) FROM (
-              SELECT id, name, parent_id FROM section 
-              WHERE parent_id = $1 AND is_deleted = false
-          ) sub) as sub_sections,
-          (SELECT json_agg(c) FROM (
-              SELECT 
-                id, 
-                name, 
-                section_id, 
-                EXISTS (
-                  SELECT 1 
-                  FROM staff_role sr 
-                  WHERE sr.counter_id = counter.id
-                ) as is_active 
-              FROM counter 
-              WHERE section_id = ANY(SELECT id FROM allowed_ids)
-              -- Often good to filter out deleted counters here too
-              AND is_deleted = false 
-          ) c) as counters,
-          (SELECT json_agg(q) FROM (
-              SELECT * FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids) AND status = 'waiting'
-          ) q) as queues,
-          (SELECT json_agg(st) FROM (
-              SELECT s.id, s.first_name, s.last_name, sr.section_id, sr.counter_id
-              FROM staff s 
-              JOIN staff_role sr ON sr.staff_id = s.id
-              WHERE sr.section_id = ANY(SELECT id FROM allowed_ids) 
-              AND s.is_deleted = false
-          ) st) as staffs,
-          (SELECT json_agg(h) FROM (
-              SELECT TO_CHAR(date_trunc('hour', created_at), 'HH24:00') AS hour,
-                    COUNT(*) FILTER (WHERE status != 'cancel') AS new_queue,
-                    COUNT(*) FILTER (WHERE status IN ('complete','transfer')) AS complete
-              FROM queue 
-              WHERE section_id = ANY(SELECT id FROM allowed_ids) 
-              AND created_at >= CURRENT_DATE
-              GROUP BY 1 ORDER BY 1
-          ) h) as hourly_breakdown,
-          (SELECT row_to_json(stats_agg) FROM stats_agg) as raw_stats;
-    `;
+    const query = `
+    SELECT 
+      (SELECT row_to_json(s) FROM (SELECT * FROM section WHERE id = $1 AND is_deleted = false) s) as section,
+      (SELECT json_agg(sub) FROM (
+          SELECT id, name, parent_id FROM section 
+          WHERE parent_id = $1 AND is_deleted = false
+      ) sub) as sub_sections;
+  `;
 
-    const { rows } = await db.query(mainQuery, [sectionId, roleSectionIds, auth.isSuperAdmin]);
+    const { rows } = await db.query(query, [sectionId]);
     const result = rows[0];
 
-    if (!result.section) return json({ success: false, message: "Not found" }, 404, origin);
-
-    // Final Permission Guard
-    const fullAccess = auth.isSuperAdmin || roleSectionIds.includes(sectionId);
-    if (!fullAccess && !result.sub_sections && !result.queues) {
-      return json({ success: false, message: "Forbidden" }, 403, origin);
-    }
-
-    const now = new Date();
-    const hoursPassed = Math.max(now.getHours() - 8, 1);
-    const rawStats = result.raw_stats || {};
-
-    const stats = {
-      est_new_queue_per_hour: (rawStats.total_new || 0) / hoursPassed,
-      est_complete_case_per_hour: (rawStats.total_complete || 0) / hoursPassed,
-      est_avg_operation_time_per_case_minutes: Number(rawStats.avg_op) || 0,
-      hourly_breakdown: result.hourly_breakdown || [],
-      last_updated: now.toISOString()
-    };
+    if (!result.section) return json({ success: false, message: "Not found" }, 404);
 
     return json({
       success: true,
-      mode: "section-detail",
-      access: fullAccess ? "full" : "partial",
       data: {
         section: result.section,
         sub_sections: (result.sub_sections || []).map(sec => ({
           ...sec,
-          has_access: fullAccess || roleSectionIds.includes(sec.id)
-        })),
-        counters: result.counters || [],
-        queues: result.queues || [],
-        staffs: result.staffs || [],
-        stats
+          has_access: auth.isSuperAdmin || roleSectionIds.includes(sec.id)
+        }))
       }
     }, 200, origin);
   }, req, origin);
