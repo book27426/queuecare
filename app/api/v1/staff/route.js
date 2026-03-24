@@ -25,8 +25,8 @@ function json(data, status, origin) {
 export async function POST(req) {
   const origin = req.headers.get("origin");
 
-  return withTimer(async () => {
-    try {
+  // return withTimer(async () => {
+    // try {
       const authHeader = req.headers.get("authorization");
 
       if (!authHeader?.startsWith("Bearer ")) {
@@ -48,7 +48,7 @@ export async function POST(req) {
       let status = "login";
       const client = await db.connect();
 
-      try {
+      // try {
         await client.query("BEGIN");
 
         const existing = await client.query(
@@ -69,13 +69,13 @@ export async function POST(req) {
             );
           } else {
             result = await client.query(
-              `SELECT first_name, last_name, email, picture FROM staff WHERE uid=$1`,
+              `SELECT first_name, last_name, email, image FROM staff WHERE uid=$1`,
               [uid]
             );
           }
         } else {
           result = await client.query(
-            `INSERT INTO staff (first_name, last_name, uid, email, picture)
+            `INSERT INTO staff (first_name, last_name, uid, email, image)
             VALUES ($1,$2,$3,$4,$5)
             RETURNING first_name, last_name, email, picture`,
             [first_name, last_name, uid, email, picture]
@@ -108,19 +108,19 @@ export async function POST(req) {
 
         return withCors(response, origin);
 
-      } catch (err) {
-        await client.query("ROLLBACK");
+    //   } catch (err) {
+    //     await client.query("ROLLBACK");
 
-        return json({ success: false, message: "error creating staff" }, 500, origin);
+    //     return json({ success: false, message: "error creating staff" }, 500, origin);
 
-      } finally {
-        client.release();
-      }
+    //   } finally {
+    //     client.release();
+    //   }
 
-    } catch (error) {
-      return json({ message: "Internal Server Error" }, 500, origin);
-    }
-  }, req, origin);
+    // } catch (error) {
+    //   return json({ message: "Internal Server Error" }, 500, origin);
+    // }
+  // }, req, origin);
 }
 
 export async function GET(req) {
