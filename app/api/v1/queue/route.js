@@ -449,3 +449,8 @@ export async function PUT(req) {
   }, req, origin);
 }
 
+// UPDATE Queue
+// SET status = 'cancel',
+//     end_at  = NOW()
+// WHERE queue_date < CURRENT_DATE
+//   AND status NOT IN ('complete', 'cancel');

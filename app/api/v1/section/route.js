@@ -121,8 +121,7 @@ export async function GET(req) {
         const { rows } = await db.query(
           `SELECT 
               id, 
-              name, 
-              predict_time,
+              name,
               (SELECT COUNT(*)::int 
               FROM queue q 
               WHERE q.section_id = section.id 
