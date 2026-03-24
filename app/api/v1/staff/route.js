@@ -42,7 +42,7 @@ export async function POST(req) {
         return json({ success: false, message: "Invalid token" }, 401, origin);
       }
 
-      const { uid, email, name } = decoded;
+      const { uid, email, name, image } = decoded;
       const [first_name, ...rest] = (name || "").split(" ");
       const last_name = rest.join(" ");
       let status = "login";
@@ -75,10 +75,10 @@ export async function POST(req) {
           }
         } else {
           result = await client.query(
-            `INSERT INTO staff (first_name, last_name, uid, email)
-            VALUES ($1,$2,$3,$4)
-            `,
-            [first_name, last_name, uid, email]
+            `INSERT INTO staff (first_name, last_name, uid, email, image)
+            VALUES ($1,$2,$3,$4,$5)
+            RETURNING *`,
+            [first_name, last_name, uid, email, image]
           );
 
           statusCode = 201;
