@@ -65,7 +65,6 @@ export async function PUT(req) {
             code_expires_at = $2
         WHERE id = $3
           AND is_deleted = false
-        RETURNING id, invite_code, code_expires_at
         `,
         [inviteCode, expiresAt, sectionId]
       );

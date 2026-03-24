@@ -64,7 +64,7 @@ export async function POST(req) {
 
           if (staff.is_deleted) {
             result = await client.query(
-              `UPDATE staff SET is_deleted=false WHERE uid=$1 RETURNING *`,
+              `UPDATE staff SET is_deleted=false WHERE uid=$1 `,
               [uid]
             );
           } else {
@@ -77,7 +77,7 @@ export async function POST(req) {
           result = await client.query(
             `INSERT INTO staff (first_name, last_name, uid, email)
             VALUES ($1,$2,$3,$4)
-            RETURNING *`,
+            `,
             [first_name, last_name, uid, email]
           );
 
@@ -94,7 +94,7 @@ export async function POST(req) {
           .createSessionCookie(idToken, { expiresIn });
 
         const response = NextResponse.json(
-          { success: true, status: status, data: result.rows[0] },
+          { success: true, status: status },
           { status: statusCode }
         );
 
@@ -217,7 +217,7 @@ export async function PUT(req) {
           `INSERT INTO staff_role (role, staff_id, section_id)
           VALUES ($1,$2,$3)
           ON CONFLICT (staff_id, section_id, role) DO NOTHING
-          RETURNING role, section_id`,
+          `,
           ["staff", authId, section_id]
         );
 
@@ -243,7 +243,7 @@ export async function PUT(req) {
 
         await client.query("COMMIT");
         
-        return json({ success: true, data: result.rows[0] }, 200, origin);
+        return json({ success: true }, 200, origin);
       }
 
       // 2️⃣ Self profile update
@@ -264,7 +264,7 @@ export async function PUT(req) {
           first_name = COALESCE($1, first_name),
           last_name  = COALESCE($2, last_name)
         WHERE id=$3
-        RETURNING id, first_name, last_name, section_id`,
+        `,
         [first_name, last_name, authId]
       );
 
@@ -281,7 +281,7 @@ export async function PUT(req) {
 
       await client.query("COMMIT");
 
-      return json({ success: true, data: result.rows[0] }, 200, origin);
+      return json({ success: true }, 200, origin);
       // =================================================
       // 👑 ADMIN / SUPER_ADMIN
       // =================================================

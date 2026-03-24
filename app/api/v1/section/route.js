@@ -71,8 +71,7 @@ export async function POST(req) {
       const section = await client.query(
         `INSERT INTO section 
           (name, parent_id, depth_int)
-        VALUES ($1,$2,$3)
-        RETURNING *`,
+        VALUES ($1,$2,$3)`,
         [name, parent, depth]
       );
 
@@ -92,7 +91,7 @@ export async function POST(req) {
 
       await client.query("COMMIT");
 
-      return json({ success: true, data: section.rows[0] }, 201, origin);
+      return json({ success: true }, 201, origin);
 
     } catch (err) {
       try {
@@ -345,8 +344,7 @@ export async function PUT(req) {
         `UPDATE section
         SET ${fields.join(", ")}
         WHERE id=$${index}
-        AND is_deleted=false
-        RETURNING *`,
+        AND is_deleted=false`,
         values
       );
 
@@ -391,7 +389,7 @@ export async function PUT(req) {
 
       await client.query("COMMIT");
 
-      return json({ success: true, data: result.rows[0] }, 200, origin);
+      return json({ success: true }, 200, origin);
 
     } catch (err) {
       console.error("Update section error:", err);

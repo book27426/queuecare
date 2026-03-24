@@ -99,8 +99,7 @@ export async function POST(req) {
       } else {
         const insertUser = await client.query(
           `INSERT INTO users (phone_num)
-          VALUES ($1)
-          RETURNING id`,
+          VALUES ($1)`,
           [phone_num]
         );
 
@@ -362,11 +361,10 @@ export async function PUT(req) {
       const oldPhone = oldUser.rows[0].phone_num;
 
       // 4️⃣ Update phone
-      const result = await client.query(
+      await client.query(
         `UPDATE users
         SET phone_num=$1
-        WHERE id=$2
-        RETURNING id, phone_num`,
+        WHERE id=$2`,
         [phone_num, user_id]
       );
 

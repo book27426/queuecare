@@ -49,7 +49,7 @@ export async function POST(req) {
         [name.trim().toUpperCase(), section_id]
       );
 
-      return json({ success: true, data: rows[0] }, 201, origin);
+      return json({ success: true}, 201, origin);
       
     } catch (err) {
       if (err.code === "23505")
@@ -106,7 +106,7 @@ export async function PUT(req) {
         [name.trim().toUpperCase(), counter_id]
       );
 
-      return json({ success: true, data: rows[0] }, 200, origin);
+      return json({ success: true }, 200, origin);
 
     } catch (err) {
 

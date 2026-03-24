@@ -290,7 +290,7 @@ export async function PUT(req) {
             `UPDATE queue
             SET status='transfer', staff_id=$2, detail=$3, end_at = NOW()
             WHERE id=$1 AND status='serving' AND staff_id=$2
-            RETURNING *`,
+            RETURNING number, name, phone_num, detail, queue_date, user_id, token`,
             [id, staff_id, queue_detail]
           );
 
@@ -303,8 +303,7 @@ export async function PUT(req) {
           // 3.4.2 INSERT queue
           result = await client.query(
             `INSERT INTO queue (number, name, phone_num, detail, queue_date, user_id, section_id, status, token)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,'waiting',$8)
-            RETURNING *`,
+            VALUES ($1,$2,$3,$4,$5,$6,$7,'waiting',$8)`,
             [
               oldQueue.number,
               oldQueue.name,
@@ -357,7 +356,7 @@ export async function PUT(req) {
             const queue_id = rows[0].id
           
             result = await client.query(
-              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status='waiting' RETURNING *`,
+              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status='waiting'`,
               [queue_id, staff_id]
             );
           }
@@ -383,7 +382,7 @@ export async function PUT(req) {
         );
 
         await client.query("COMMIT");
-        return json({ success: true, role: "staff", data: result.rows[0]}, 200, origin);
+        return json({ success: true, role: "staff"}, 200, origin);
       }
 
       // 1. Verify User
@@ -399,8 +398,7 @@ export async function PUT(req) {
           SET status='cancel', end_at=NOW()
           WHERE id=$1
             AND user_id=$2
-            AND status='waiting'
-          RETURNING *`,
+            AND status='waiting'`,
           [id, user_id]
         );
 
@@ -413,8 +411,7 @@ export async function PUT(req) {
 
         return json({
           success: true,
-          role: "user",
-          data: result.rows[0]
+          role: "user"
         }, 200, origin);
       }
 
@@ -424,8 +421,7 @@ export async function PUT(req) {
         await client.query("BEGIN");
         const result = await client.query(
           `UPDATE queue SET status='cancel', end_at=NOW()
-          WHERE id=$1 AND token=$2 AND status='waiting'
-          RETURNING *`,
+          WHERE id=$1 AND token=$2 AND status='waiting'`,
           [id, guest_token]
         );
 
