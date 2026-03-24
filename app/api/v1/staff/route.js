@@ -95,7 +95,10 @@ export async function POST(req) {
 
         const response = NextResponse.json(
           { success: true, status: status },
-          { status: statusCode, data: result.rows[0] }
+          { 
+            status: statusCode, 
+            data: result.rows[0] 
+          }
         );
 
         response.cookies.set("session", sessionCookie, {
