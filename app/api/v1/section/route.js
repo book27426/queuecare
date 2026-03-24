@@ -119,10 +119,26 @@ export async function GET(req) {
       // Public Search (Non-authenticated or Unauthorized)
       if (auth.error) {
         const { rows } = await db.query(
-          `SELECT id, name, wait_default, predict_time
-          FROM section
-          WHERE name ILIKE '%' || $1 || '%'
-          AND is_deleted = false AND depth_int = 0`,
+          `SELECT 
+              id, 
+              name, 
+              predict_time,
+              (SELECT COUNT(*)::int 
+              FROM queue q 
+              WHERE q.section_id = section.id 
+              AND q.status IN ('waiting')
+              AND q.created_at >= CURRENT_DATE
+              ) as queue_count,
+              (SELECT COUNT(*) * section.predict_time 
+              FROM queue q 
+              WHERE q.section_id = section.id 
+              AND q.status IN ('waiting')
+              AND q.created_at >= CURRENT_DATE
+              ) as estimated_wait_minutes
+            FROM section
+            WHERE name ILIKE '%' || $1 || '%'
+            AND is_deleted = false 
+            AND depth_int = 0`,
           [searchName]
         );
 
