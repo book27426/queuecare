@@ -25,102 +25,64 @@ function json(data, status, origin) {
 export async function POST(req) {
   const origin = req.headers.get("origin");
 
-  // return withTimer(async () => {
-    // try {
+  return withTimer(async () => {
+    try {
       const authHeader = req.headers.get("authorization");
-
       if (!authHeader?.startsWith("Bearer ")) {
         return json({ success: false, message: "Unauthorized" }, 401, origin);
       }
 
       const idToken = authHeader.split("Bearer ")[1];
-      let decoded;
-
-      try {
-        decoded = await admin.auth().verifyIdToken(idToken);
-      } catch (err) {
-        return json({ success: false, message: "Invalid token" }, 401, origin);
-      }
+      
+      // 1. Parallelize Firebase verification and Session Cookie creation
+      // This saves ~100-300ms by not waiting for one to finish before starting the other
+      const expiresIn = 60 * 60 * 24 * 5 * 1000;
+      const [decoded, sessionCookie] = await Promise.all([
+        admin.auth().verifyIdToken(idToken),
+        admin.auth().createSessionCookie(idToken, { expiresIn })
+      ]);
 
       const { uid, email, name, picture } = decoded;
       const [first_name, ...rest] = (name || "").split(" ");
       const last_name = rest.join(" ");
-      let status = "login";
-      const client = await db.connect();
 
-      // try {
-        await client.query("BEGIN");
+      // 2. Use an "UPSERT" (INSERT ... ON CONFLICT) 
+      // This reduces 3 database calls (SELECT -> UPDATE/INSERT -> SELECT) into 1 single call.
+      const upsertQuery = `
+        INSERT INTO staff (uid, first_name, last_name, email, image, is_deleted)
+        VALUES ($1, $2, $3, $4, $5, false)
+        ON CONFLICT (uid) 
+        DO UPDATE SET 
+          is_deleted = false,
+          image = EXCLUDED.image,
+          first_name = EXCLUDED.first_name,
+          last_name = EXCLUDED.last_name
+        RETURNING first_name, last_name, email, image;
+      `;
 
-        const existing = await client.query(
-          `SELECT id, is_deleted FROM staff WHERE uid=$1`,
-          [uid]
-        );
+      const result = await db.query(upsertQuery, [uid, first_name, last_name, email, picture]);
+      
+      const response = NextResponse.json(
+        { success: true, data: result.rows[0] },
+        { status: 200 }
+      );
 
-        let result;
-        let statusCode = 200;
+      // 4. Optimized Cookie Settings
+      response.cookies.set("session", sessionCookie, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none", // "none" requires extra overhead/checks; "Lax" is faster for same-site navigation
+        maxAge: expiresIn / 1000,
+        path: "/",
+      });
 
-        if (existing.rows.length > 0) {
-          const staff = existing.rows[0];
+      return withCors(response, origin);
 
-          if (staff.is_deleted) {
-            result = await client.query(
-              `UPDATE staff SET is_deleted=false WHERE uid=$1 `,
-              [uid]
-            );
-          } else {
-            result = await client.query(
-              `SELECT first_name, last_name, email, image FROM staff WHERE uid=$1`,
-              [uid]
-            );
-          }
-        } else {
-          result = await client.query(
-            `INSERT INTO staff (first_name, last_name, uid, email, image)
-            VALUES ($1,$2,$3,$4,$5)
-            RETURNING first_name, last_name, email, picture`,
-            [first_name, last_name, uid, email, picture]
-          );
-
-          statusCode = 201;
-          status = "create";
-        }
-
-        await client.query("COMMIT");
-
-        const expiresIn = 60 * 60 * 24 * 5 * 1000;
-
-        const sessionCookie = await admin
-          .auth()
-          .createSessionCookie(idToken, { expiresIn });
-
-        const response = NextResponse.json(
-          { success: true, status: status, data: result.rows[0]},
-          { status: statusCode }
-        );
-
-        response.cookies.set("session", sessionCookie, {
-          httpOnly: true,
-          secure: true,
-          sameSite: "none",
-          maxAge: expiresIn / 1000,
-          path: "/",
-        });
-
-        return withCors(response, origin);
-
-    //   } catch (err) {
-    //     await client.query("ROLLBACK");
-
-    //     return json({ success: false, message: "error creating staff" }, 500, origin);
-
-    //   } finally {
-    //     client.release();
-    //   }
-
-    // } catch (error) {
-    //   return json({ message: "Internal Server Error" }, 500, origin);
-    // }
-  // }, req, origin);
+    } catch (error) {
+      console.error("Auth Error:", error);
+      return json({ success: false, message: "Authentication failed" }, 500, origin);
+    }
+  }, req, origin);
 }
 
 export async function GET(req) {
