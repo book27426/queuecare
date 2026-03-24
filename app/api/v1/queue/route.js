@@ -225,8 +225,7 @@ export async function PUT(req) {
 
       const { status, queue_detail, section_id, next, counter_id } = await req.json();
       const allowedStatus = ["no_show", "complete", "serving", "transfer"];
-
-      if (!allowedStatus.includes(status)) {
+      if (!allowedStatus.includes(status)&& status) {
         return json({ success: false, message: "invalid status" }, 400, origin);
       }
         
