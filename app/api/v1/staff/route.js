@@ -42,7 +42,7 @@ export async function POST(req) {
         return json({ success: false, message: "Invalid token" }, 401, origin);
       }
 
-      const { uid, email, name, image } = decoded;
+      const { uid, email, name, picture } = decoded;
       const [first_name, ...rest] = (name || "").split(" ");
       const last_name = rest.join(" ");
       let status = "login";
@@ -69,16 +69,16 @@ export async function POST(req) {
             );
           } else {
             result = await client.query(
-              `SELECT * FROM staff WHERE uid=$1`,
+              `SELECT first_name, last_name, email, picture FROM staff WHERE uid=$1`,
               [uid]
             );
           }
         } else {
           result = await client.query(
-            `INSERT INTO staff (first_name, last_name, uid, email, image)
+            `INSERT INTO staff (first_name, last_name, uid, email, picture)
             VALUES ($1,$2,$3,$4,$5)
-            RETURNING *`,
-            [first_name, last_name, uid, email, image]
+            RETURNING first_name, last_name, email, picture`,
+            [first_name, last_name, uid, email, picture]
           );
 
           statusCode = 201;
@@ -94,7 +94,7 @@ export async function POST(req) {
           .createSessionCookie(idToken, { expiresIn });
 
         const response = NextResponse.json(
-          { success: true, status: status, data: result.rows[0] },
+          { success: true, status: status, data: result.rows[0]},
           { status: statusCode }
         );
 
