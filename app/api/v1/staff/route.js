@@ -94,11 +94,8 @@ export async function POST(req) {
           .createSessionCookie(idToken, { expiresIn });
 
         const response = NextResponse.json(
-          { success: true, status: status },
-          { 
-            status: statusCode, 
-            data: result.rows[0] 
-          }
+          { success: true, status: status, data: result.rows[0] },
+          { status: statusCode }
         );
 
         response.cookies.set("session", sessionCookie, {
