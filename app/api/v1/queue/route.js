@@ -224,24 +224,42 @@ export async function PUT(req) {
       const id = Number(searchParams.get("id"));
 
       const { status, queue_detail, section_id, next, counter_id } = await req.json();
-      const allowedStatus = ["no_show", "complete", "serving", "transfer"];
+      const allowedStatus = ["no_show", "complete", "serving", "transfer", "cancel"];
       if (!allowedStatus.includes(status)&& status) {
         return json({ success: false, message: "invalid status" }, 400, origin);
       }
         
-      const queueCheck = await client.query(
-        `SELECT id, section_id, status
-        FROM queue
-        WHERE id = $1
-        FOR UPDATE`,
-        [id]
-      );
+      let queuesection_id
+      if(id){
+        const queueCheck = await client.query(
+          `SELECT id, section_id, status
+          FROM queue
+          WHERE id = $1
+          FOR UPDATE`,
+          [id]
+        );
 
-      if (!queueCheck.rowCount) {
-        await client.query("ROLLBACK");
-        return json({ success: false, message: "queue not found" }, 404, origin);
+        if (!queueCheck.rowCount) {
+          await client.query("ROLLBACK");
+          return json({ success: false, message: "queue not found" }, 404, origin);
+        }
+        queuesection_id = queueCheck.rows[0].section_id;
+      }else{
+        const countercheck = await client.query(
+          `SELECT id, section_id, is_active
+          FROM counter
+          WHERE id = $1
+          FOR UPDATE`,
+          [counter_id]
+        );
+
+        if (!countercheck.rowCount) {
+          await client.query("ROLLBACK");
+          return json({ success: false, message: "counter not found" }, 404, origin);
+        }
+        queuesection_id = countercheck.rows[0].section_id;
       }
-      const queuesection_id = queueCheck.rows[0].section_id;
+      
 
       // 1. Verify staff
       const auth = await verifyStaff(req,queuesection_id);
