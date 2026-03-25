@@ -135,7 +135,10 @@ export async function GET(req) {
               AND q.created_at >= CURRENT_DATE
               ) as estimated_wait_minutes
             FROM section
-            WHERE name ILIKE '%' || $1 || '%'
+            WHERE (
+              name ILIKE '%' || $1 || '%' 
+              OR ($2 = true AND id::text = $1) -- Check ID if it's a number
+            )
             AND is_deleted = false 
             AND depth_int = 0`,
           [searchName]
