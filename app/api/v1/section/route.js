@@ -118,6 +118,7 @@ export async function GET(req) {
     if (!id) {
       // Public Search (Non-authenticated or Unauthorized)
       if (auth.error) {
+        const isNumber = !isNaN(searchName) && !isNaN(parseFloat(searchName));
         const { rows } = await db.query(
           `SELECT 
               id, 
@@ -137,11 +138,11 @@ export async function GET(req) {
             FROM section
             WHERE (
               name ILIKE '%' || $1 || '%' 
-              OR ($2 = true AND id::text = $1) -- Check ID if it's a number
+              OR ($2 = true AND id::text = $1)
             )
             AND is_deleted = false 
             AND depth_int = 0`,
-          [searchName]
+          [searchName, isNumber]
         );
 
         return json({ success: true, mode: "public-search", data: rows }, 200, origin);
