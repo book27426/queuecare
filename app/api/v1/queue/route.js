@@ -240,6 +240,7 @@ export async function PUT(req) {
         return json({ success: false, message: "invalid status" }, 400, origin);
       }
         
+      console.log({status, queue_detail, section_id, next, counter_id})
       let queuesection_id
       if(id){
         const queueCheck = await client.query(
