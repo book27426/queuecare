@@ -245,15 +245,7 @@ export async function GET(req) {
       );
 
       // 5️⃣ waiting queues in section
-      const calledQueues = await db.query(
-        `SELECT id, number, name
-         FROM queue
-         WHERE section_id = $1
-         AND queue_date = CURRENT_DATE
-         AND status = 'no_show'
-         ORDER BY number`,
-        [counter.section_id]
-      );
+      
 
       const nextQueues = await db.query(
         `SELECT id, number
@@ -274,7 +266,6 @@ export async function GET(req) {
               name: counter.name
             },
             current_queue: currentQueue.rows[0] || null,
-            called_queues: calledQueues.rows,
             next_queues: nextQueues.rows
           }
         },

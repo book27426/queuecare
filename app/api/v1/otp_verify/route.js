@@ -76,3 +76,82 @@ export async function POST(req) {
     }
   }, req, origin);
 }
+
+export async function GET(req) {
+  const origin = req.headers.get("origin");
+  return withTimer(async () => {
+    try {
+      const { searchParams } = new URL(req.url);
+      const counter_id = Number(searchParams.get("id"));
+      const search = Number(searchParams.get("search"));
+
+      if (!counter_id || Number.isNaN(counter_id)) {
+        return json(
+          { success: false, message: "valid counter id required" },
+          400,
+          origin
+        );
+      }
+
+      const counterCheck = await db.query(
+        `SELECT id, name, section_id
+        FROM counter
+        WHERE id = $1
+        AND is_deleted = false`,
+        [counter_id]
+      );
+      
+      if (!counterCheck.rowCount) {
+        return json(
+          { success: false, message: "counter not found" },
+          404,
+          origin
+        );
+      }
+
+      const counter = counterCheck.rows[0];
+
+      // 3️⃣ verify permission
+      const auth = await verifyStaff(req, counter.section_id);
+      if (auth.error) return auth.error;
+
+      if (!auth.isAdmin && !auth.isSuperAdmin && auth.counter_id !== counter_id) {
+        return json(
+          { success: false, message: "Forbidden: not your counter" },
+          403,
+          origin
+        );
+      }
+
+      const calledQueues = await db.query(
+        `SELECT id, number, name
+        FROM queue
+        WHERE section_id = $1
+        AND queue_date = CURRENT_DATE
+        AND status = 'no_show'
+        ORDER BY number`,
+        [counter.section_id]
+      );
+
+      return json(
+        {
+          success: true,
+          data: {
+            called_queues: calledQueues.rows
+          }
+        },
+        200,
+        origin
+      );
+
+    } catch (err) {
+      console.error(err);
+
+      return json(
+        { success: false, message: "server error" },
+        500,
+        origin
+      );
+    }
+  }, req, origin);
+}
