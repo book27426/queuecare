@@ -390,7 +390,7 @@ export async function PUT(req) {
             }
           }else{
             result = await client.query(
-              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status='waiting'`,
+              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status IN ('serving', 'no_show')`,
               [id, staff_id]
             );
           }
