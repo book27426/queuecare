@@ -275,7 +275,7 @@ export async function GET(req) {
             },
             current_queue: currentQueue.rows[0] || null,
             called_queues: calledQueues.rows,
-            next_queues: nextQueues.rows.length > 0
+            next_queues: nextQueues.rows[0]
           }
         },
         200,
