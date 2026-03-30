@@ -344,7 +344,6 @@ export async function PUT(req) {
               oldQueue.token
             ]
           );
-          console.log(section_id)
         }
         if (next||status === "serving") {
           // 3.3 UPDATE queue serving
@@ -402,7 +401,7 @@ export async function PUT(req) {
           );
         }
 
-        if (!result || !result.rowCount) {
+        if (!result) {
           await client.query("ROLLBACK");
           return json({ success: false, message: "queue not found or invalid state" }, 400, origin);
         }
@@ -468,7 +467,6 @@ export async function PUT(req) {
       }
 
       await client.query("ROLLBACK");
-      console.log("Unauthorized")
       return json({ success: false, message: "Unauthorized" }, 401, origin);
     } catch (err) {
       console.error("Update queue error:", err);
