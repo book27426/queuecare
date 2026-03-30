@@ -357,35 +357,41 @@ export async function PUT(req) {
             );
 
           }else if(staff_counter_id!=counter_id){
-            console.log(staff_counter_id)
-            console.log(counter_id)
             await client.query("ROLLBACK");
             return json({ success: false, message: "invalid target counter" }, 400, origin);
           }
-          const { rows } = await client.query(
-            `SELECT id
-            FROM queue
-            WHERE section_id = $1
-            AND status = 'waiting'
-            AND queue_date = CURRENT_DATE
-            ORDER BY id
-            LIMIT 1`,
-            [queuesection_id]
-          );
-          if(!rows[0]){
-            await client.query(
-              `UPDATE staff_role SET counter_id = NULL WHERE staff_id = $1 AND section_id = $2`,
-              [staff_id, queuesection_id]
+
+          if(!id){
+            const { rows } = await client.query(
+              `SELECT id
+              FROM queue
+              WHERE section_id = $1
+              AND status = 'waiting'
+              AND queue_date = CURRENT_DATE
+              ORDER BY id
+              LIMIT 1`,
+              [queuesection_id]
             );
-        
-            await client.query("COMMIT"); // Commit the counter release
-            return json({ success: true, message: "No patients waiting", data: null }, 200, origin);//but it dont have logz
-          }else{
-            const queue_id = rows[0].id
+            if(!rows[0]){
+              await client.query(
+                `UPDATE staff_role SET counter_id = NULL WHERE staff_id = $1 AND section_id = $2`,
+                [staff_id, queuesection_id]
+              );
           
+              await client.query("COMMIT"); // Commit the counter release
+              return json({ success: true, message: "No patients waiting", data: null }, 200, origin);//but it dont have logz
+            }else{
+              const queue_id = rows[0].id
+            
+              result = await client.query(
+                `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status='waiting'`,
+                [queue_id, staff_id]
+              );
+            }
+          }else{
             result = await client.query(
               `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status='waiting'`,
-              [queue_id, staff_id]
+              [id, staff_id]
             );
           }
         }else{
