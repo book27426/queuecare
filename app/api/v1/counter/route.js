@@ -246,7 +246,7 @@ export async function GET(req) {
 
       // 5️⃣ waiting queues in section
       const calledQueues = await db.query(
-        `SELECT number, name
+        `SELECT id, number, name
          FROM queue
          WHERE section_id = $1
          AND queue_date = CURRENT_DATE
