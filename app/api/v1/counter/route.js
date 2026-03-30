@@ -184,103 +184,67 @@ export async function GET(req) {
 
   return withTimer(async () => {
     try {
-
-      // 1️⃣ get counter id
+      // 1️⃣ Fast Validation
       const { searchParams } = new URL(req.url);
       const counter_id = Number(searchParams.get("id"));
 
       if (!counter_id || Number.isNaN(counter_id)) {
-        return json(
-          { success: false, message: "valid counter id required" },
-          400,
-          origin
-        );
+        return json({ success: false, message: "valid counter id required" }, 400, origin);
       }
 
-      // 2️⃣ find counter + section
+      // 2️⃣ Initial Fetch
       const counterCheck = await db.query(
-        `SELECT id, name, section_id
-         FROM counter
-         WHERE id = $1
-         AND is_deleted = false`,
+        `SELECT id, name, section_id FROM counter WHERE id = $1 AND is_deleted = false`,
         [counter_id]
       );
 
       if (!counterCheck.rowCount) {
-        return json(
-          { success: false, message: "counter not found" },
-          404,
-          origin
-        );
+        return json({ success: false, message: "counter not found" }, 404, origin);
       }
-
       const counter = counterCheck.rows[0];
 
-      // 3️⃣ verify permission
+      // 3️⃣ Verify permission
       const auth = await verifyStaff(req, counter.section_id);
       if (auth.error) return auth.error;
 
-      // optional: restrict to own counter
       if (!auth.isAdmin && !auth.isSuperAdmin && auth.counter_id !== counter_id) {
-        return json(
-          { success: false, message: "Forbidden: not your counter" },
-          403,
-          origin
-        );
+        return json({ success: false, message: "Forbidden: not your counter" }, 403, origin);
       }
 
-      // 4️⃣ get current queue
-      const currentQueue = await db.query(
-        `SELECT id, number, name, phone_num, start_at
-         FROM queue
-         WHERE staff_id = (
-           SELECT staff_id
-           FROM staff_role
-           WHERE counter_id = $1
-           LIMIT 1
-         )
-         AND status = 'serving'
-         AND queue_date = CURRENT_DATE`,
-        [counter_id]
-      );
+      // 4️⃣ & 5️⃣ Parallelize Database Calls
+      // We fire both queries at once to save one full round-trip time.
+      const [currentQueueRes, nextQueuesRes] = await Promise.all([
+        db.query(
+          `SELECT id, number, name, phone_num, start_at
+           FROM queue
+           WHERE staff_id = (SELECT staff_id FROM staff_role WHERE counter_id = $1 LIMIT 1)
+           AND status = 'serving'
+           AND queue_date = CURRENT_DATE`,
+          [counter_id]
+        ),
+        db.query(
+          `SELECT id, number
+           FROM queue 
+           WHERE section_id = $1 
+           AND queue_date = CURRENT_DATE 
+           AND status = 'waiting' 
+           ORDER BY id ASC LIMIT 1`,
+          [counter.section_id]
+        )
+      ]);
 
-      // 5️⃣ waiting queues in section
-      
-
-      const nextQueues = await db.query(
-        `SELECT id, number
-        FROM queue 
-        WHERE section_id = $1 
-        AND queue_date = CURRENT_DATE 
-        AND status = 'waiting' 
-        ORDER BY id ASC LIMIT 1 `, 
-        [counter.section_id]
-      );
-
-      return json(
-        {
-          success: true,
-          data: {
-            counter: {
-              id: counter.id,
-              name: counter.name
-            },
-            current_queue: currentQueue.rows[0] || null,
-            next_queues: nextQueues.rows
-          }
-        },
-        200,
-        origin
-      );
+      return json({
+        success: true,
+        data: {
+          counter: { id: counter.id, name: counter.name },
+          current_queue: currentQueueRes.rows[0] || null,
+          next_queues: nextQueuesRes.rows
+        }
+      }, 200, origin);
 
     } catch (err) {
       console.error(err);
-
-      return json(
-        { success: false, message: "server error" },
-        500,
-        origin
-      );
+      return json({ success: false, message: "server error" }, 500, origin);
     }
   }, req, origin);
 }
