@@ -184,7 +184,6 @@ export async function GET(req) {
 
   return withTimer(async () => {
     try {
-      // 1️⃣ Fast Validation
       const { searchParams } = new URL(req.url);
       const counter_id = Number(searchParams.get("id"));
 
@@ -192,7 +191,6 @@ export async function GET(req) {
         return json({ success: false, message: "valid counter id required" }, 400, origin);
       }
 
-      // 2️⃣ Initial Fetch
       const counterCheck = await db.query(
         `SELECT id, name, section_id FROM counter WHERE id = $1 AND is_deleted = false`,
         [counter_id]
@@ -203,7 +201,6 @@ export async function GET(req) {
       }
       const counter = counterCheck.rows[0];
 
-      // 3️⃣ Verify permission
       const auth = await verifyStaff(req, counter.section_id);
       if (auth.error) return auth.error;
 
@@ -211,8 +208,6 @@ export async function GET(req) {
         return json({ success: false, message: "Forbidden: not your counter" }, 403, origin);
       }
 
-      // 4️⃣ & 5️⃣ Parallelize Database Calls
-      // We fire both queries at once to save one full round-trip time.
       const [currentQueueRes, nextQueuesRes] = await Promise.all([
         db.query(
           `SELECT id, number, name, phone_num, start_at
