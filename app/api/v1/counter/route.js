@@ -245,13 +245,23 @@ export async function GET(req) {
       );
 
       // 5️⃣ waiting queues in section
-      const waitingQueues = await db.query(
+      const calledQueues = await db.query(
         `SELECT number, name
          FROM queue
          WHERE section_id = $1
          AND queue_date = CURRENT_DATE
-         AND status = 'waiting'
+         AND status = 'no_show'
          ORDER BY number`,
+        [counter.section_id]
+      );
+
+      const nextQueues = await db.query(
+        `SELECT id 
+        FROM queue 
+        WHERE section_id = $1 
+        AND queue_date = CURRENT_DATE 
+        AND status = 'waiting' 
+        LIMIT 1`, 
         [counter.section_id]
       );
 
@@ -264,7 +274,8 @@ export async function GET(req) {
               name: counter.name
             },
             current_queue: currentQueue.rows[0] || null,
-            waiting_queues: waitingQueues.rows
+            called_queues: calledQueues.rows,
+            next_queues: nextQueues.rows.length > 0
           }
         },
         200,
