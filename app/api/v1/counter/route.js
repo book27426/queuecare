@@ -256,12 +256,12 @@ export async function GET(req) {
       );
 
       const nextQueues = await db.query(
-        `SELECT id 
+        `SELECT id, number
         FROM queue 
         WHERE section_id = $1 
         AND queue_date = CURRENT_DATE 
         AND status = 'waiting' 
-        LIMIT 1`, 
+        ORDER BY id ASC LIMIT 1 `, 
         [counter.section_id]
       );
 
