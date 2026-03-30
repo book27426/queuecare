@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { withTimer } from "@/lib/timer";
 import crypto from "crypto";
+import { verifyStaff } from "@/lib/auth";
 
 import { withCors, getCorsHeaders } from "@/lib/cors";
 
@@ -83,75 +84,58 @@ export async function GET(req) {
     try {
       const { searchParams } = new URL(req.url);
       const counter_id = Number(searchParams.get("id"));
-      const search = Number(searchParams.get("search"));
+      // 1. FIX: Keep search as a string, not a number
+      const search = searchParams.get("search") || ""; 
 
       if (!counter_id || Number.isNaN(counter_id)) {
-        return json(
-          { success: false, message: "valid counter id required" },
-          400,
-          origin
-        );
+        return json({ success: false, message: "valid counter id required" }, 400, origin);
       }
 
+      // 2. Fetch counter and section details
       const counterCheck = await db.query(
-        `SELECT id, name, section_id
-        FROM counter
-        WHERE id = $1
-        AND is_deleted = false`,
+        `SELECT id, name, section_id FROM counter WHERE id = $1 AND is_deleted = false`,
         [counter_id]
       );
       
       if (!counterCheck.rowCount) {
-        return json(
-          { success: false, message: "counter not found" },
-          404,
-          origin
-        );
+        return json({ success: false, message: "counter not found" }, 404, origin);
       }
 
       const counter = counterCheck.rows[0];
 
-      // 3️⃣ verify permission
+      // 3. Verify Permission (Check if staff belongs to this section)
       const auth = await verifyStaff(req, counter.section_id);
       if (auth.error) return auth.error;
 
-      if (!auth.isAdmin && !auth.isSuperAdmin && auth.counter_id !== counter_id) {
-        return json(
-          { success: false, message: "Forbidden: not your counter" },
-          403,
-          origin
-        );
+      let queryParams = [counter.section_id];
+      let sql = `
+        SELECT id, number, name 
+        FROM queue 
+        WHERE section_id = $1 
+        AND queue_date = CURRENT_DATE 
+        AND status = 'no_show'
+      `;
+
+      if (search) {
+        queryParams.push(`%${search}%`);
+        // Filter by name OR cast the number to text to search by ticket digits
+        sql += ` AND (name ILIKE $2 OR number::text ILIKE $2)`;
       }
 
-      const calledQueues = await db.query(
-        `SELECT id, number, name
-        FROM queue
-        WHERE section_id = $1
-        AND queue_date = CURRENT_DATE
-        AND status = 'no_show'
-        ORDER BY number`,
-        [counter.section_id]
-      );
+      sql += ` ORDER BY number ASC LIMIT 10`; // Limit 50 for speed
 
-      return json(
-        {
-          success: true,
-          data: {
-            called_queues: calledQueues.rows
-          }
-        },
-        200,
-        origin
-      );
+      const calledQueues = await db.query(sql, queryParams);
+
+      return json({
+        success: true,
+        data: {
+          called_queues: calledQueues.rows
+        }
+      }, 200, origin);
 
     } catch (err) {
       console.error(err);
-
-      return json(
-        { success: false, message: "server error" },
-        500,
-        origin
-      );
+      return json({ success: false, message: "server error" }, 500, origin);
     }
   }, req, origin);
 }
