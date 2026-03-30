@@ -134,28 +134,39 @@ export async function GET(req) {
 
       const staffAuth = await verifyStaff(req,section_id);
       if (!staffAuth.error) {
+        if (!section_id) {
+          return json({ success: false, error: "Invalid Section ID" }, 400, origin);
+        }
         const { rows } = await db.query(
-          `SELECT q.id, q.number, c.name AS counter_name, q.status
-          FROM queue q
-          LEFT JOIN staff_role sr ON sr.staff_id = q.staff_id  
-          LEFT JOIN counter c ON c.id = sr.counter_id  
-          WHERE q.section_id = $1
-            AND q.status IN ('waiting', 'serving')
-            AND q.queue_date = CURRENT_DATE
-          ORDER BY 
-            q.id ASC;
-          `,
+          `(SELECT q.id, q.number, c.name AS counter_name, q.status, q.start_at
+            FROM queue q
+            LEFT JOIN staff_role sr ON q.staff_id = sr.staff_id
+            LEFT JOIN counter c ON sr.counter_id = c.id
+            WHERE q.section_id = $1 
+              AND q.start_at IS NOT NULL
+              AND q.queue_date = CURRENT_DATE
+            LIMIT 5)
+          UNION ALL
+          (SELECT q.id, q.number, c.name AS counter_name, q.status, q.start_at
+            FROM queue q
+            LEFT JOIN staff_role sr ON q.staff_id = sr.staff_id
+            LEFT JOIN counter c ON sr.counter_id = c.id
+            WHERE q.section_id = $1 
+              AND q.status = 'no_show' 
+              AND q.queue_date = CURRENT_DATE
+            ORDER BY q.start_at DESC
+            LIMIT 10)`,
           [section_id]
         );
-        
+
         const staffData = rows.reduce((acc, row) => {
           if (row.status === 'serving') {
-            acc.serving.push(row);
+            acc.currently_serving.push(row);
           } else {
-            acc.waiting.push(row);
+            acc.recent_logs.push(row);
           }
           return acc;
-        }, { serving: [], waiting: [] });
+        }, { currently_serving: [], recent_logs: [] });
 
         return json({
           success: true,
