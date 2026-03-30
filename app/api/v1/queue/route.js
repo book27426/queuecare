@@ -160,10 +160,10 @@ export async function GET(req) {
         );
 
         const staffData = rows.reduce((acc, row) => {
-          if (row.status === 'serving') {
-            acc.currently_serving.push(row);
-          } else {
+          if (row.status === 'no_show') {
             acc.recent_logs.push(row);
+          } else {
+            acc.currently_serving.push(row);
           }
           return acc;
         }, { currently_serving: [], recent_logs: [] });
