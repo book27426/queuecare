@@ -239,8 +239,7 @@ export async function PUT(req) {
       if (!allowedStatus.includes(status)&& status) {
         return json({ success: false, message: "invalid status" }, 400, origin);
       }
-        
-      console.log({status, queue_detail, section_id, next, counter_id})
+
       let queuesection_id
       if(id){
         const queueCheck = await client.query(
@@ -388,7 +387,7 @@ export async function PUT(req) {
                 [queue_id, staff_id]
               );
             }
-          }else{
+          }else if(status === "serving"){
             result = await client.query(
               `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status IN ('serving', 'no_show')`,
               [id, staff_id]
