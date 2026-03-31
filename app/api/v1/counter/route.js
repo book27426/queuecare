@@ -194,7 +194,7 @@ export async function GET(req) {
 
       // 1. Start Auth and DB queries simultaneously
       const [auth, dbData] = await Promise.all([
-        verifyStaff(req, section_id), // Pass the request; we'll check section_id permissions after we get it from the DB
+        verifyStaff(req, section_id),
         db.query(`
           WITH counter_info AS (
             SELECT id, name, section_id 
@@ -233,7 +233,7 @@ export async function GET(req) {
       // 3. Authorization Check (Now that we have the section_id from the DB)
       if (auth.error) return auth.error;
 
-      const isAuthorized = auth.isAdmin || auth.isSuperAdmin || 
+      const isAuthorized = auth.isAdmin || auth.isSuperAdmin || auth.counter_id === null
                           (auth.counter_id === counter_id && auth.section_id === result.counter.section_id);
 
       if (!isAuthorized) {
