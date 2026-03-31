@@ -122,7 +122,7 @@ export async function GET(req) {
         sql += ` AND (name ILIKE $2 OR number::text ILIKE $2)`;
       }
 
-      sql += ` ORDER BY number ASC LIMIT 10`; // Limit 50 for speed
+      sql += ` ORDER BY number ASC LIMIT 5`; // Limit 50 for speed
 
       const calledQueues = await db.query(sql, queryParams);
 
