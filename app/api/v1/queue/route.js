@@ -354,7 +354,7 @@ export async function PUT(req) {
             return json({ success: false, message: "invalid target counter" }, 400, origin);
           }
 
-          if(status === "serving"){
+          if(status === "serving" && id){
             result = await client.query(
               `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2, counter_id=$3 WHERE id=$1 AND status IN ('serving', 'no_show')`,
               [id, staff_id, staff_counter_id]
