@@ -191,58 +191,62 @@ export async function GET(req) {
         return json({ success: false, message: "valid counter id required" }, 400, origin);
       }
 
-      const counterCheck = await db.query(
-        `SELECT id, name, section_id FROM counter WHERE id = $1 AND is_deleted = false`,
-        [counter_id]
-      );
-
-      if (!counterCheck.rowCount) {
-        return json({ success: false, message: "counter not found" }, 404, origin);
-      }
-      const counter = counterCheck.rows[0];
-
-      const auth = await verifyStaff(req, counter.section_id);
-      if (auth.error) return auth.error;
-
-      if (!auth.isAdmin && !auth.isSuperAdmin && auth.counter_id !== counter_id) {
-        return json({ success: false, message: "Forbidden: not your counter" }, 403, origin);
-      }
-
-      const [currentQueueRes, nextQueuesRes, sectionAccess] = await Promise.all([
-        db.query(
-          `SELECT id, number, name, phone_num, start_at
-           FROM queue
-           WHERE counter_id = $1
-           AND status = 'serving'
-           AND queue_date = CURRENT_DATE
-           ORDER BY start_at ASC LIMIT 1`,
-          [counter_id]
-        ),
-        db.query(
-          `SELECT id, number
-           FROM queue 
-           WHERE section_id = $1 
-           AND queue_date = CURRENT_DATE 
-           AND status = 'waiting' 
-           ORDER BY id ASC LIMIT 1`,
-          [counter.section_id]
-        ),
-        db.query(
-          `SELECT id, name
-           FROM section 
-           WHERE parent_id = $1 
-           ORDER BY id`,
-          [counter.section_id]
-        )
+      // 1. Start Auth and DB queries simultaneously
+      const [auth, dbData] = await Promise.all([
+        verifyStaff(req), // Pass the request; we'll check section_id permissions after we get it from the DB
+        db.query(`
+          WITH counter_info AS (
+            SELECT id, name, section_id 
+            FROM counter 
+            WHERE id = $1 AND is_deleted = false
+            LIMIT 1
+          )
+          SELECT 
+            (SELECT row_to_json(c) FROM counter_info c) as counter,
+            (SELECT json_agg(q) FROM (
+              SELECT id, number, name, phone_num, start_at FROM queue 
+              WHERE counter_id = $1 AND status = 'serving' AND queue_date = CURRENT_DATE 
+              ORDER BY start_at ASC LIMIT 1
+            ) q) as current_queue,
+            (SELECT json_agg(nq) FROM (
+              SELECT id, number FROM queue 
+              WHERE section_id = (SELECT section_id FROM counter_info) 
+              AND queue_date = CURRENT_DATE AND status = 'waiting' 
+              ORDER BY id ASC LIMIT 1
+            ) nq) as next_queues,
+            (SELECT json_agg(s) FROM (
+              SELECT id, name FROM section 
+              WHERE parent_id = (SELECT section_id FROM counter_info) 
+              ORDER BY id
+            ) s) as section_access
+        `, [counter_id])
       ]);
 
+      const result = dbData.rows[0];
+
+      // 2. Early exit if counter doesn't exist
+      if (!result.counter) {
+        return json({ success: false, message: "counter not found" }, 404, origin);
+      }
+
+      // 3. Authorization Check (Now that we have the section_id from the DB)
+      if (auth.error) return auth.error;
+
+      const isAuthorized = auth.isAdmin || auth.isSuperAdmin || 
+                          (auth.counter_id === counter_id && auth.section_id === result.counter.section_id);
+
+      if (!isAuthorized) {
+        return json({ success: false, message: "Forbidden: access denied" }, 403, origin);
+      }
+
+      // 4. Return combined results
       return json({
         success: true,
         data: {
-          counter: { id: counter.id, name: counter.name },
-          section_access: sectionAccess.rows || null,
-          current_queue: currentQueueRes.rows[0] || null,
-          next_queues: nextQueuesRes.rows
+          counter: result.counter,
+          section_access: result.section_access || [],
+          current_queue: result.current_queue?.[0] || null,
+          next_queues: result.next_queues || []
         }
       }, 200, origin);
 
