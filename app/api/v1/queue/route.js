@@ -354,7 +354,12 @@ export async function PUT(req) {
             return json({ success: false, message: "invalid target counter" }, 400, origin);
           }
 
-          if(!id){
+          if(status === "serving"){
+            result = await client.query(
+              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2, counter_id=$3 WHERE id=$1 AND status IN ('serving', 'no_show')`,
+              [id, staff_id, staff_counter_id]
+            );
+          }else{
             const { rows } = await client.query(
               `SELECT id
               FROM queue
@@ -381,11 +386,6 @@ export async function PUT(req) {
                 [queue_id, staff_id, staff_counter_id]
               );
             }
-          }else if(status === "serving"){
-            result = await client.query(
-              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2, counter_id=$3 WHERE id=$1 AND status IN ('serving', 'no_show')`,
-              [id, staff_id, staff_counter_id]
-            );
           }
         }else{
           await client.query(
