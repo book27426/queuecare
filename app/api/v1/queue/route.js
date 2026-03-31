@@ -134,44 +134,37 @@ export async function GET(req) {
 
       const staffAuth = await verifyStaff(req,section_id);
       if (!staffAuth.error) {
-        if (!section_id) {
-          return json({ success: false, error: "Invalid Section ID" }, 400, origin);
-        }
-        const section = await db.query(`
-          SELECT name
-          FROM section
-          WHERE id = $1
-        `, [section_id]);
-
-        const serving = await db.query(`
-          SELECT q.id, q.number, c.name AS counter_name, q.start_at
-          FROM queue q
-          LEFT JOIN counter c ON q.counter_id = c.id
-          WHERE q.section_id = $1
-            AND q.start_at IS NOT NULL
-            AND q.queue_date = CURRENT_DATE
-          ORDER BY q.start_at DESC
-          LIMIT 6
-        `, [section_id]);
-
-        const noShow = await db.query(`
-          SELECT q.id, q.number, c.name AS counter_name, q.start_at
-          FROM queue q
-          LEFT JOIN counter c ON q.counter_id = c.id
-          WHERE q.section_id = $1
-            AND q.status = 'no_show'
-            AND q.queue_date = CURRENT_DATE
-          ORDER BY q.id ASC
-          LIMIT 12
-        `, [section_id]);
+        const [sectionRes, servingRes, noShowRes] = await Promise.all([
+          db.query(`SELECT name FROM section WHERE id = $1`, [section_id]),
+          db.query(`
+            SELECT q.id, q.number, c.name AS counter_name, q.start_at
+            FROM queue q
+            LEFT JOIN counter c ON q.counter_id = c.id
+            WHERE q.section_id = $1
+              AND q.start_at IS NOT NULL
+              AND q.queue_date = CURRENT_DATE
+            ORDER BY q.start_at DESC
+            LIMIT 6
+          `, [section_id]),
+          db.query(`
+            SELECT q.id, q.number, c.name AS counter_name, q.start_at
+            FROM queue q
+            LEFT JOIN counter c ON q.counter_id = c.id
+            WHERE q.section_id = $1
+              AND q.status = 'no_show'
+              AND q.queue_date = CURRENT_DATE
+            ORDER BY q.id ASC
+            LIMIT 12
+          `, [section_id])
+        ]);
 
         return json({
           success: true,
           role: "staff",
           data: {
-            section: section.rows[0],
-            currently_serving: serving.rows,
-            recent_logs: noShow.rows
+            section: sectionRes.rows[0],
+            currently_serving: servingRes.rows,
+            recent_logs: noShowRes.rows
           }
         }, 200, origin);
       }
