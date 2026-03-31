@@ -137,41 +137,35 @@ export async function GET(req) {
         if (!section_id) {
           return json({ success: false, error: "Invalid Section ID" }, 400, origin);
         }
-        const { rows } = await db.query(
-          `(SELECT q.id, q.number, c.name AS counter_name, q.status, q.start_at
-            FROM queue q
-            LEFT JOIN staff_role sr ON q.staff_id = sr.staff_id
-            LEFT JOIN counter c ON sr.counter_id = c.id
-            WHERE q.section_id = $1 
-              AND q.start_at IS NOT NULL
-              AND q.queue_date = CURRENT_DATE
-            LIMIT 6)
-          UNION ALL
-          (SELECT q.id, q.number, c.name AS counter_name, q.status, q.start_at
-            FROM queue q
-            LEFT JOIN staff_role sr ON q.staff_id = sr.staff_id
-            LEFT JOIN counter c ON sr.counter_id = c.id
-            WHERE q.section_id = $1 
-              AND q.status = 'no_show' 
-              AND q.queue_date = CURRENT_DATE
-            ORDER BY q.start_at DESC
-            LIMIT 10)`,
-          [section_id]
-        );
+        const serving = await db.query(`
+          SELECT q.id, q.number, c.name AS counter_name, q.start_at
+          FROM queue q
+          LEFT JOIN counter c ON q.counter_id = c.id
+          WHERE q.section_id = $1
+            AND q.status = 'serving'
+            AND q.queue_date = CURRENT_DATE
+          ORDER BY q.start_at DESC
+          LIMIT 6
+        `, [section_id]);
 
-        const staffData = rows.reduce((acc, row) => {
-          if (row.status === 'no_show') {
-            acc.recent_logs.push(row);
-          } else {
-            acc.currently_serving.push(row);
-          }
-          return acc;
-        }, { currently_serving: [], recent_logs: [] });
+        const noShow = await db.query(`
+          SELECT q.id, q.number, c.name AS counter_name, q.start_at
+          FROM queue q
+          LEFT JOIN counter c ON q.counter_id = c.id
+          WHERE q.section_id = $1
+            AND q.status = 'no_show'
+            AND q.queue_date = CURRENT_DATE
+          ORDER BY q.start_at DESC
+          LIMIT 10
+        `, [section_id]);
 
         return json({
           success: true,
           role: "staff",
-          data: staffData,
+          data: {
+            currently_serving: serving.rows,
+            recent_logs: noShow.rows
+          }
         }, 200, origin);
       }
 
