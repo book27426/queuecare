@@ -137,6 +137,12 @@ export async function GET(req) {
         if (!section_id) {
           return json({ success: false, error: "Invalid Section ID" }, 400, origin);
         }
+        const section = await db.query(`
+          SELECT name
+          FROM section
+          WHERE id = $1
+        `, [section_id]);
+
         const serving = await db.query(`
           SELECT q.id, q.number, c.name AS counter_name, q.start_at
           FROM queue q
@@ -163,6 +169,7 @@ export async function GET(req) {
           success: true,
           role: "staff",
           data: {
+            section: section.rows,
             currently_serving: serving.rows,
             recent_logs: noShow.rows
           }
