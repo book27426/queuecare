@@ -156,7 +156,7 @@ export async function GET(req) {
             AND q.status = 'no_show'
             AND q.queue_date = CURRENT_DATE
           ORDER BY q.id ASC
-          LIMIT 10
+          LIMIT 12
         `, [section_id]);
 
         return json({
