@@ -355,9 +355,10 @@ export async function PUT(req) {
           }
 
           if(status === "serving" && id){
+            console.log("1")
             result = await client.query(
               `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2, counter_id=$3 WHERE id=$1 AND status IN ('serving', 'no_show')`,
-              [id, staff_id, staff_counter_id]
+              [id, staff_id, counter_id]
             );
           }else{
             const { rows } = await client.query(
@@ -379,11 +380,12 @@ export async function PUT(req) {
               await client.query("COMMIT"); // Commit the counter release
               return json({ success: true, message: "No patients waiting", data: null }, 200, origin);//but it dont have logz
             }else{
+              console.log("2")
               const queue_id = rows[0].id
             
               result = await client.query(
                 `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2, counter_id=$3 WHERE id=$1 AND status='waiting'`,
-                [queue_id, staff_id, staff_counter_id]
+                [queue_id, staff_id, counter_id]
               );
             }
           }
