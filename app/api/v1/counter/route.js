@@ -186,6 +186,7 @@ export async function GET(req) {
     try {
       const { searchParams } = new URL(req.url);
       const counter_id = Number(searchParams.get("id"));
+      const section_id = Number(searchParams.get("section_id"));
 
       if (!counter_id || Number.isNaN(counter_id)) {
         return json({ success: false, message: "valid counter id required" }, 400, origin);
@@ -193,7 +194,7 @@ export async function GET(req) {
 
       // 1. Start Auth and DB queries simultaneously
       const [auth, dbData] = await Promise.all([
-        verifyStaff(req), // Pass the request; we'll check section_id permissions after we get it from the DB
+        verifyStaff(req, section_id), // Pass the request; we'll check section_id permissions after we get it from the DB
         db.query(`
           WITH counter_info AS (
             SELECT id, name, section_id 
