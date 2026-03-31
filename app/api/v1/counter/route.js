@@ -212,11 +212,12 @@ export async function GET(req) {
         db.query(
           `SELECT id, number, name, phone_num, start_at
            FROM queue
-           WHERE staff_id = (SELECT staff_id FROM staff_role WHERE counter_id = $1 LIMIT 1)
+           WHERE counter_id = $1
            AND status = 'serving'
-           AND queue_date = CURRENT_DATE`,
+           AND queue_date = CURRENT_DATE
+           LIMIT 1`,
           [counter_id]
-        ),
+        ),///fix
         db.query(
           `SELECT id, number
            FROM queue 
