@@ -142,7 +142,7 @@ export async function GET(req) {
           FROM queue q
           LEFT JOIN counter c ON q.counter_id = c.id
           WHERE q.section_id = $1
-            AND q.status = 'serving'
+            AND q.start_at IS NOT NULL
             AND q.queue_date = CURRENT_DATE
           ORDER BY q.start_at DESC
           LIMIT 6
@@ -155,7 +155,7 @@ export async function GET(req) {
           WHERE q.section_id = $1
             AND q.status = 'no_show'
             AND q.queue_date = CURRENT_DATE
-          ORDER BY q.start_at DESC
+          ORDER BY q.id DESC
           LIMIT 10
         `, [section_id]);
 
