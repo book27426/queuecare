@@ -145,7 +145,7 @@ export async function GET(req) {
             WHERE q.section_id = $1 
               AND q.start_at IS NOT NULL
               AND q.queue_date = CURRENT_DATE
-            LIMIT 5)
+            LIMIT 6)
           UNION ALL
           (SELECT q.id, q.number, c.name AS counter_name, q.status, q.start_at
             FROM queue q
@@ -383,14 +383,14 @@ export async function PUT(req) {
               const queue_id = rows[0].id
             
               result = await client.query(
-                `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status='waiting'`,
-                [queue_id, staff_id]
+                `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2, counter_id=$3 WHERE id=$1 AND status='waiting'`,
+                [queue_id, staff_id, staff_counter_id]
               );
             }
           }else if(status === "serving"){
             result = await client.query(
-              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2 WHERE id=$1 AND status IN ('serving', 'no_show')`,
-              [id, staff_id]
+              `UPDATE queue SET status='serving', start_at=NOW(), staff_id=$2, counter_id=$3 WHERE id=$1 AND status IN ('serving', 'no_show')`,
+              [id, staff_id, staff_counter_id]
             );
           }
         }else{
