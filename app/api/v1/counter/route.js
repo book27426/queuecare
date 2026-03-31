@@ -215,7 +215,7 @@ export async function GET(req) {
            WHERE counter_id = $1
            AND status = 'serving'
            AND queue_date = CURRENT_DATE
-           LIMIT 1`,
+           ORDER BY start_at ASC LIMIT 1`,
           [counter_id]
         ),///fix
         db.query(
