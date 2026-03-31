@@ -208,7 +208,7 @@ export async function GET(req) {
         return json({ success: false, message: "Forbidden: not your counter" }, 403, origin);
       }
 
-      const [currentQueueRes, nextQueuesRes] = await Promise.all([
+      const [currentQueueRes, nextQueuesRes, sectionAccess] = await Promise.all([
         db.query(
           `SELECT id, number, name, phone_num, start_at
            FROM queue
@@ -217,7 +217,7 @@ export async function GET(req) {
            AND queue_date = CURRENT_DATE
            ORDER BY start_at ASC LIMIT 1`,
           [counter_id]
-        ),///fix
+        ),
         db.query(
           `SELECT id, number
            FROM queue 
@@ -226,6 +226,13 @@ export async function GET(req) {
            AND status = 'waiting' 
            ORDER BY id ASC LIMIT 1`,
           [counter.section_id]
+        ),
+        db.query(
+          `SELECT id, name
+           FROM section 
+           WHERE parent_id = $1 
+           ORDER BY id`,
+          [counter.section_id]
         )
       ]);
 
@@ -233,6 +240,7 @@ export async function GET(req) {
         success: true,
         data: {
           counter: { id: counter.id, name: counter.name },
+          section_access: sectionAccess.rows || null,
           current_queue: currentQueueRes.rows[0] || null,
           next_queues: nextQueuesRes.rows
         }
