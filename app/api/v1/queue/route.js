@@ -134,38 +134,35 @@ export async function GET(req) {
 
       const staffAuth = await verifyStaff(req,section_id);
       if (!staffAuth.error) {
-        const [sectionRes, servingRes, noShowRes] = await Promise.all([
-          db.query(`SELECT name FROM section WHERE id = $1`, [section_id]),
-          db.query(`
-            SELECT q.id, q.number, c.name AS counter_name, q.start_at
-            FROM queue q
-            LEFT JOIN counter c ON q.counter_id = c.id
-            WHERE q.section_id = $1
-              AND q.start_at IS NOT NULL
-              AND q.queue_date = CURRENT_DATE
-            ORDER BY q.start_at DESC
-            LIMIT 6
-          `, [section_id]),
-          db.query(`
-            SELECT q.id, q.number, c.name AS counter_name, q.start_at
-            FROM queue q
-            LEFT JOIN counter c ON q.counter_id = c.id
-            WHERE q.section_id = $1
-              AND q.status = 'no_show'
-              AND q.queue_date = CURRENT_DATE
-            ORDER BY q.id ASC
-            LIMIT 12
-          `, [section_id])
-        ]);
+        const result = await db.query(`
+          SELECT 
+            (SELECT name FROM section WHERE id = $1) as section_name,
+            (
+              SELECT json_agg(serving) FROM (
+                SELECT q.id, q.number, c.name AS counter_name, q.start_at
+                FROM queue q
+                LEFT JOIN counter c ON q.counter_id = c.id
+                WHERE q.section_id = $1 AND q.start_at IS NOT NULL AND q.queue_date = CURRENT_DATE
+                ORDER BY q.start_at DESC LIMIT 6
+              ) serving
+            ) as currently_serving,
+            (
+              SELECT json_agg(no_show) FROM (
+                SELECT q.id, q.number, c.name AS counter_name, q.start_at
+                FROM queue q
+                LEFT JOIN counter c ON q.counter_id = c.id
+                WHERE q.section_id = $1 AND q.status = 'no_show' AND q.queue_date = CURRENT_DATE
+                ORDER BY q.id ASC LIMIT 12
+              ) no_show
+            ) as recent_logs
+        `, [section_id]);
+
+        const data = result.rows[0];
 
         return json({
           success: true,
           role: "staff",
-          data: {
-            section: sectionRes.rows[0],
-            currently_serving: servingRes.rows,
-            recent_logs: noShowRes.rows
-          }
+          data: data
         }, 200, origin);
       }
 
