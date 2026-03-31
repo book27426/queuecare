@@ -169,7 +169,7 @@ export async function GET(req) {
           success: true,
           role: "staff",
           data: {
-            section: section.rows,
+            section: section.rows[0],
             currently_serving: serving.rows,
             recent_logs: noShow.rows
           }
