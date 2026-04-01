@@ -329,40 +329,25 @@ export async function DELETE(req) {
     try {
       // 1. Get id params
       const { searchParams } = new URL(req.url);
-      const idParam = searchParams.get("id");
+      const idParam = searchParams.get("staff_id");
+      const sectionID = searchParams.get("id");
       const id = Number(idParam);
-
-      const auth = await verifyStaff(req);
+      const section_id = Number(sectionID);
+      if (!id || !section_id) {
+        return json({ success: false, message: "staff_id and section_id is required" }, 400, origin);
+      }
+      const auth = await verifyStaff(req, section_id);
       if (auth.error)return withCors(auth.error, origin);
 
-      if (!id || Number.isNaN(id)) {
-        // const response = NextResponse.json(
-        //   { success: true, status: "logout"},
-        //   { status: 200 }
-        // );
-
-        // response.cookies.set("session", "", {
-        //   httpOnly: true,
-        //   secure: true,
-        //   sameSite: "none",
-        //   maxAge: 0,
-        //   path: "/",
-        // });
-
-        // return withCors(response, origin);
-        return json({ "success": false, message: "id is required" }, 400, origin);
-      }
-
-
-      if (!auth.isSuperAdmin)
+      if (!auth.isSuperAdmin || !auth.isAdmin)
         return json({ success: false, message: "Forbidden - admin only" }, 403, origin);
 
       await client.query("BEGIN");
 
       // 3. Soft delete
       const { rowCount } = await client.query(
-        `UPDATE staff SET is_deleted=true WHERE id=$1 AND is_deleted=false`,
-        [id]
+        `DELETE staff_role WHERE staff_id=$1 AND section_id=$2`,
+        [id, section_id]
       );
 
       if (!rowCount) {
@@ -371,11 +356,11 @@ export async function DELETE(req) {
       }
 
       // 4. Insert log
-      const detail = `Deleted staff ${id}`;
+      const detail = `remove staff ${id} from section ${section_id}`;
       await client.query(
         `INSERT INTO log (staff_id, action_type, action, target)
         VALUES ($1, $2, $3, $4)`,
-        [staff_id, "delete", detail, "staff"]
+        [auth.staff_id, "remove", detail, "staff"]
       );
 
       await client.query("COMMIT");
