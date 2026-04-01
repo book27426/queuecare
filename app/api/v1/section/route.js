@@ -183,7 +183,7 @@ export async function GET(req) {
       success: true,
       data: {
         section: result.section,
-        role: auth.roles?.find(r => r.section_id === sectionId) || null,
+        role: auth.roles?.find(r => r.section_id === sectionId).role || null,
         sub_sections: (result.sub_sections || []).map(sec => ({
           ...sec,
           has_access: auth.isSuperAdmin || roleSectionIds.includes(sec.id)
