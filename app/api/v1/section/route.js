@@ -156,7 +156,16 @@ export async function GET(req) {
         [searchName, sectionIds]
       );
 
-      return json({ success: true, mode: "staff-search", data: rows }, 200, origin);
+      const sectionsWithRoles = rows.map(section => {
+        const roleEntry = auth.roles.find(r => r.section_id === section.id);
+        
+        return {
+          ...section,
+          role: roleEntry ? roleEntry.role : null // Attach the role (e.g., 'admin', 'staff')
+        };
+      });
+
+      return json({ success: true, mode: "staff-search", data: sectionsWithRoles }, 200, origin);
     }
 
     // DETAIL MODE
