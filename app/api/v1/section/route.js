@@ -26,7 +26,6 @@ export async function POST(req) {
   const client = await db.connect();
   return withTimer(async () => {
     try {
-      ///this take to long to run
       // 1. Verify staff
       const auth = await verifyStaff(req);
       if (auth.error)return withCors(auth.error, origin);
