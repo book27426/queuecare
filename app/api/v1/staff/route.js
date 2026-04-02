@@ -55,10 +55,10 @@ export async function POST(req) {
           last_name = EXCLUDED.last_name
       `;
 
-      await db.query(upsertQuery, [uid, first_name, last_name, email, picture]);
+      const result = await db.query(upsertQuery, [uid, first_name, last_name, email, picture]);
       
       const response = NextResponse.json(
-        { success: true },
+        { success: true, data: result.rows[0] },
         { status: 200 }
       );
 
