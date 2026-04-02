@@ -35,15 +35,16 @@ export async function POST(req) {
       const idToken = authHeader.split("Bearer ")[1];
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const { uid, email, name, picture } = decodedToken;
+
       const [first_name, ...rest] = (name || "").split(" ");
       const last_name = rest.join(" ");
 
+      // 1. Get roles and staff_id in one hit
       const syncQuery = `
         WITH upserted AS (
           INSERT INTO staff (uid, first_name, last_name, email, image, is_deleted)
           VALUES ($1, $2, $3, $4, $5, false)
-          ON CONFLICT (uid) DO UPDATE SET 
-            is_deleted = false, image = EXCLUDED.image
+          ON CONFLICT (uid) DO UPDATE SET is_deleted = false, image = EXCLUDED.image
           RETURNING id
         )
         SELECT u.id as staff_id, sr.role, sr.section_id, sr.counter_id
@@ -52,38 +53,32 @@ export async function POST(req) {
       `;
 
       const dbResult = await db.query(syncQuery, [uid, first_name, last_name, email, picture]);
-      
-      if (dbResult.rows.length === 0) throw new Error("Database sync failed");
-
       const staff_id = dbResult.rows[0].staff_id;
-      const roles = dbResult.rows
-        .filter(r => r.role !== null)
-        .map(r => ({
-          section_id: r.section_id,
-          role: r.role,
-          counter_id: r.counter_id
-        }));
 
-      const isSuperAdmin = roles.some(r => r.role === 'super_admin');
-
-      await admin.auth().setCustomUserClaims(uid, {
-        staff_id,
-        isSuperAdmin,
-        roles
+      // 2. COMPRESS the roles for the JWT
+      const rs = {};
+      dbResult.rows.forEach(r => {
+        if (!r.role) return;
+        rs[r.section_id] = r.counter_id ? [r.role[0], r.counter_id] : r.role[0];
       });
 
+      // 3. SET CLAIMS (Crucial for verifyStaff to work without DB)
+      await admin.auth().setCustomUserClaims(uid, {
+        sid: staff_id,
+        rs: rs,
+        sa: dbResult.rows.some(r => r.role === 'super_admin') ? 1 : 0
+      });
+
+      // 4. Create cookie AFTER setting claims
       const expiresIn = 60 * 60 * 24 * 5 * 1000;
       const sessionCookie = await admin.auth().createSessionCookie(idToken, { expiresIn });
 
-      const response = NextResponse.json(
-        { success: true, data: { staff_id, first_name, last_name, roles } },
-        { status: 200 }
-      );
+      const response = NextResponse.json({ success: true, data: dbResult.rows[0] });
 
       response.cookies.set("session", sessionCookie, {
         httpOnly: true,
         secure: true,
-        sameSite: "none",
+        sameSite: "lax",
         maxAge: expiresIn / 1000,
         path: "/",
       });
