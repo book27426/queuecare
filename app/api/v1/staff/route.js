@@ -39,7 +39,7 @@ export async function POST(req) {
       const [first_name, ...rest] = (name || "").split(" ");
       const last_name = rest.join(" ");
 
-      // 1. Get roles and staff_id in one hit
+      // 1. Database Sync (Same as yours)
       const syncQuery = `
         WITH upserted AS (
           INSERT INTO staff (uid, first_name, last_name, email, image, is_deleted)
@@ -55,25 +55,40 @@ export async function POST(req) {
       const dbResult = await db.query(syncQuery, [uid, first_name, last_name, email, picture]);
       const staff_id = dbResult.rows[0].staff_id;
 
-      // 2. COMPRESS the roles for the JWT
+      // 2. Compress Roles
       const rs = {};
       dbResult.rows.forEach(r => {
         if (!r.role) return;
         rs[r.section_id] = r.counter_id ? [r.role[0], r.counter_id] : r.role[0];
       });
 
-      // 3. SET CLAIMS (Crucial for verifyStaff to work without DB)
+      // 3. SET CLAIMS
       await admin.auth().setCustomUserClaims(uid, {
         sid: staff_id,
         rs: rs,
         sa: dbResult.rows.some(r => r.role === 'super_admin') ? 1 : 0
       });
 
-      // 4. Create cookie AFTER setting claims
+      /**
+       * ⚠️ THE CRITICAL PART ⚠️
+       * We cannot use the 'idToken' from the req body because it's "stale".
+       * We tell the frontend: "Claims are set, now please give me a fresh token."
+       * OR 
+       * We tell the user to re-login.
+       */
+
+      // BEST PRACTICAL FIX: 
+      // Create the cookie. On the FIRST request after login, verifyStaff 
+      // will see no claims and we will handle that fallback.
+      
       const expiresIn = 60 * 60 * 24 * 5 * 1000;
       const sessionCookie = await admin.auth().createSessionCookie(idToken, { expiresIn });
 
-      const response = NextResponse.json({ success: true, data: dbResult.rows[0] });
+      const response = NextResponse.json({ 
+        success: true, 
+        needsRefresh: true, // Tell frontend to reload if claims are missing
+        data: dbResult.rows[0] 
+      });
 
       response.cookies.set("session", sessionCookie, {
         httpOnly: true,
