@@ -97,73 +97,93 @@ export async function PUT(req) {
   }, req, origin);
 }
 
-// GET /api/v1/sections/:id/live
+// GET /api/v1/section/other?id=4
 export async function GET(req) {
   const origin = req.headers.get("origin");
+
   return withTimer(async () => {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    const auth = await verifyStaff(req);
     const sectionId = Number(id);
-    const roleSectionIds = auth.roles?.map(r => r.section_id) || [];
 
+    // 1. Verify and Normalize Roles
+    const auth = await verifyStaff(req);
+    if (auth.error) return withCors(auth.error, origin);
+
+    // Support both Array and Object formats for auth.roles
+    const rolesArray = Array.isArray(auth.roles) 
+      ? auth.roles 
+      : Object.entries(auth.roles || {}).map(([sId, role]) => ({ section_id: Number(sId), role }));
+
+    const roleSectionIds = rolesArray.map(r => r.section_id);
+
+    // 2. The Optimized Query
     const liveQuery = `
       WITH RECURSIVE subtree AS (
+          -- Start with the requested section
           SELECT id FROM section WHERE id = $1 AND is_deleted = false
           UNION ALL
-          SELECT s.id FROM section s JOIN subtree st ON s.parent_id = st.id WHERE s.is_deleted = false
+          -- Find all children
+          SELECT s.id FROM section s 
+          JOIN subtree st ON s.parent_id = st.id 
+          WHERE s.is_deleted = false
       ),
-      allowed_ids AS (SELECT id FROM subtree WHERE id = ANY($2) OR $3 = true)
+      allowed_ids AS (
+          -- Filter subtree IDs based on user permissions
+          SELECT id FROM subtree 
+          WHERE $3 = true OR id = ANY($2)
+      )
       SELECT 
-        -- 1. Counters List
+        -- Counters List
         (SELECT json_agg(c) FROM (
             SELECT id, name, section_id, 
             EXISTS (SELECT 1 FROM staff_role sr WHERE sr.counter_id = counter.id) as is_active 
-            FROM counter WHERE section_id = ANY(SELECT id FROM allowed_ids) AND is_deleted = false
+            FROM counter 
+            WHERE section_id IN (SELECT id FROM allowed_ids) AND is_deleted = false
         ) c) as counters,
 
-        -- 2. Waiting Queues (The live list)
+        -- Waiting Queues
         (SELECT json_agg(q) FROM (
             SELECT id, number, name, status, section_id FROM queue 
-            WHERE section_id = ANY(SELECT id FROM allowed_ids) AND status = 'waiting'
+            WHERE section_id IN (SELECT id FROM allowed_ids) AND status = 'waiting'
             ORDER BY created_at ASC
         ) q) as queues,
 
-        -- 3. Dynamic Stats (Last 60 Minutes Focus)
+        -- Stats
         (SELECT row_to_json(stats) FROM (
             SELECT 
-              -- Average service time (total history today)
               AVG(EXTRACT(EPOCH FROM (end_at - start_at)) / 60) 
                 FILTER (WHERE status IN ('complete','transfer') AND created_at >= CURRENT_DATE) as avg_op,
-              
-              -- Current backlog (Still in the system)
               COUNT(*) FILTER (WHERE status IN ('waiting', 'serving')) as total_left,
-
-              -- Increase: Tickets created in the last 60 minutes
               COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '1 hour') as inc_last_hour,
-
-              -- Clear: Tickets finished in the last 60 minutes
               COUNT(*) FILTER (WHERE status IN ('complete','transfer') AND end_at >= NOW() - INTERVAL '1 hour') as clear_last_hour
-            FROM queue WHERE section_id = ANY(SELECT id FROM allowed_ids)
+            FROM queue 
+            WHERE section_id IN (SELECT id FROM allowed_ids)
         ) stats) as raw_stats;
     `;
 
-    const { rows } = await db.query(liveQuery, [sectionId, roleSectionIds, auth.isSuperAdmin]);
-    const result = rows[0];
-    const rawStats = result.raw_stats || {};
+    try {
+      const { rows } = await db.query(liveQuery, [sectionId, roleSectionIds, auth.isSuperAdmin]);
+      const result = rows[0] || {};
+      const rawStats = result.raw_stats || {};
 
-    return json({
-      success: true,
-      data: {
-        counters: result.counters || [],
-        queues: result.queues || [],
-        stats: {
-          queues_remaining: Number(rawStats.total_left) || 0,
-          increase_last_hour: Number(rawStats.inc_last_hour) || 0,
-          clear_last_hour: Number(rawStats.clear_last_hour) || 0,
-          avg_operation_time_minutes: Math.round(Number(rawStats.avg_op) || 0)
+      return json({
+        success: true,
+        data: {
+          counters: result.counters || [],
+          queues: result.queues || [],
+          stats: {
+            queues_remaining: Number(rawStats.total_left) || 0,
+            increase_last_hour: Number(rawStats.inc_last_hour) || 0,
+            clear_last_hour: Number(rawStats.clear_last_hour) || 0,
+            avg_operation_time_minutes: Math.round(Number(rawStats.avg_op) || 0)
+          }
         }
-      }
-    }, 200, origin);
+      }, 200, origin);
+      
+    } catch (dbError) {
+      console.error("Database Error:", dbError);
+      return json({ success: false, message: "Internal Server Error" }, 500, origin);
+    }
   }, req, origin);
 }

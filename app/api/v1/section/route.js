@@ -107,7 +107,7 @@ export async function POST(req) {
 
 export async function GET(req) {
   const origin = req.headers.get("origin");
-  // return withTimer(async () => {
+  return withTimer(async () => {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const searchName = searchParams.get("name") ?? "";
@@ -164,42 +164,52 @@ export async function GET(req) {
           AND s.is_deleted = false`,
         [searchName, JSON.stringify(rolesArray)]
       );
-      
+
       return json({ success: true, mode: "staff-search", data: rows }, 200, origin);
     }
 
     // DETAIL MODE
     if (auth.error) return withCors(auth.error, origin);
     const sectionId = Number(id);
-    const roleSectionIds = auth.roles?.map(r => r.section_id) || [];
+    const rolesArray = Array.isArray(auth.roles) 
+      ? auth.roles 
+      : Object.entries(auth.roles || {}).map(([sId, role]) => ({ section_id: Number(sId), role }));
 
-    
+    const roleSectionIds = rolesArray.map(r => r.section_id);
+
     const query = `
-    SELECT 
-      (SELECT row_to_json(s) FROM (SELECT * FROM section WHERE id = $1 AND is_deleted = false) s) as section,
-      (SELECT json_agg(sub) FROM (
-          SELECT id, name, parent_id FROM section 
-          WHERE parent_id = $1 AND is_deleted = false
-      ) sub) as sub_sections;
-  `;
+      SELECT 
+        (SELECT row_to_json(s) FROM (SELECT * FROM section WHERE id = $1 AND is_deleted = false) s) as section,
+        (SELECT json_agg(sub) FROM (
+            SELECT id, name, parent_id FROM section 
+            WHERE parent_id = $1 AND is_deleted = false
+        ) sub) as sub_sections;
+    `;
 
     const { rows } = await db.query(query, [sectionId]);
     const result = rows[0];
 
-    if (!result.section) return json({ success: false, message: "Not found" }, 404);
+    if (!result || !result.section) {
+      return json({ success: false, message: "Not found" }, 404, origin);
+    }
+
+    const currentRoleEntry = rolesArray.find(r => r.section_id === sectionId);
+    const displayRole = currentRoleEntry 
+      ? (currentRoleEntry.role === 'a' ? 'admin' : currentRoleEntry.role === 's' ? 'staff' : currentRoleEntry.role)
+      : null;
 
     return json({
       success: true,
       data: {
         section: result.section,
-        role: auth.roles?.find(r => r.section_id === sectionId).role || null,
+        role: auth.isSuperAdmin ? 'admin' : displayRole,
         sub_sections: (result.sub_sections || []).map(sec => ({
           ...sec,
           has_access: auth.isSuperAdmin || roleSectionIds.includes(sec.id)
         }))
       }
     }, 200, origin);
-  // }, req, origin);
+  }, req, origin);
 }
 
 export async function PUT(req) {
