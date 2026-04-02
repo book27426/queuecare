@@ -53,6 +53,7 @@ export async function POST(req) {
           image = EXCLUDED.image,
           first_name = EXCLUDED.first_name,
           last_name = EXCLUDED.last_name
+        RETURNING first_name, last_name, email, image;
       `;
 
       const result = await db.query(upsertQuery, [uid, first_name, last_name, email, picture]);
