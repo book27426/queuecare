@@ -52,32 +52,30 @@ export async function POST(req) {
       `;
 
       const dbResult = await db.query(syncQuery, [uid, first_name, last_name, email, picture]);
-      
       if (dbResult.rows.length === 0) throw new Error("Database sync failed");
 
       const staff_id = dbResult.rows[0].staff_id;
+      const isSuperAdmin = dbResult.rows.some(r => r.role === 'super_admin');
 
-      const roles = dbResult.rows
-        .filter(r => r.role !== null)
-        .map(r => ({
-          section_id: r.section_id,
-          role: r.role,
-          counter_id: r.counter_id
-        }));
+      const rs = {};
+      dbResult.rows.forEach(r => {
+        if (!r.role || r.role === 'super_admin') return;
+        const roleChar = r.role === 'admin' ? 'a' : 's';
 
-      const isSuperAdmin = roles.some(r => r.role === 'super_admin');
+        rs[r.section_id] = r.counter_id ? [roleChar, r.counter_id] : roleChar;
+      });
 
       await admin.auth().setCustomUserClaims(uid, {
-        staff_id,
-        isSuperAdmin,
-        roles
+        sid: staff_id,
+        sa: isSuperAdmin ? 1 : 0,
+        rs: rs
       });
 
       const expiresIn = 60 * 60 * 24 * 5 * 1000;
       const sessionCookie = await admin.auth().createSessionCookie(idToken, { expiresIn });
 
       const response = NextResponse.json(
-        { success: true, data: { staff_id, first_name, last_name, roles } },
+        { success: true, data: { staff_id, first_name, last_name } },
         { status: 200 }
       );
 
