@@ -107,7 +107,7 @@ export async function POST(req) {
 
 export async function GET(req) {
   const origin = req.headers.get("origin");
-  return withTimer(async () => {
+  // return withTimer(async () => {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const searchName = searchParams.get("name") ?? "";
@@ -147,25 +147,25 @@ export async function GET(req) {
         return json({ success: true, mode: "public-search", data: rows }, 200, origin);
       }
 
-      // Staff Search (Return only sections they have roles in)
-      const sectionIds = auth.roles.map(r => r.section_id);
+      const rolesArray = Object.entries(auth.roles).map(([id, role]) => ({
+        section_id: parseInt(id),
+        role: role
+      }));
+
       const { rows } = await db.query(
-        `SELECT id, name FROM section
-        WHERE name ILIKE '%' || $1 || '%'
-        AND is_deleted = false AND id = ANY($2)`,
-        [searchName, sectionIds]
+        `SELECT 
+          s.id, 
+          s.name, 
+          r.role
+        FROM section s
+        JOIN jsonb_to_recordset($2::jsonb) AS r(section_id int, role text) 
+          ON s.id = r.section_id
+        WHERE s.name ILIKE '%' || $1 || '%'
+          AND s.is_deleted = false`,
+        [searchName, JSON.stringify(rolesArray)]
       );
-
-      const sectionsWithRoles = rows.map(section => {
-        const roleEntry = auth.roles.find(r => r.section_id === section.id);
-        
-        return {
-          ...section,
-          role: roleEntry ? roleEntry.role : null // Attach the role (e.g., 'admin', 'staff')
-        };
-      });
-
-      return json({ success: true, mode: "staff-search", data: sectionsWithRoles }, 200, origin);
+      
+      return json({ success: true, mode: "staff-search", data: rows }, 200, origin);
     }
 
     // DETAIL MODE
@@ -173,6 +173,7 @@ export async function GET(req) {
     const sectionId = Number(id);
     const roleSectionIds = auth.roles?.map(r => r.section_id) || [];
 
+    
     const query = `
     SELECT 
       (SELECT row_to_json(s) FROM (SELECT * FROM section WHERE id = $1 AND is_deleted = false) s) as section,
@@ -198,7 +199,7 @@ export async function GET(req) {
         }))
       }
     }, 200, origin);
-  }, req, origin);
+  // }, req, origin);
 }
 
 export async function PUT(req) {
