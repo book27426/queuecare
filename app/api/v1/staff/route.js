@@ -33,8 +33,8 @@ export async function POST(req) {
       }
 
       const idToken = authHeader.split("Bearer ")[1];
-      
       const expiresIn = 60 * 60 * 24 * 5 * 1000;
+
       const [decoded, sessionCookie] = await Promise.all([
         admin.auth().verifyIdToken(idToken),
         admin.auth().createSessionCookie(idToken, { expiresIn })
@@ -53,20 +53,21 @@ export async function POST(req) {
           image = EXCLUDED.image,
           first_name = EXCLUDED.first_name,
           last_name = EXCLUDED.last_name
-        RETURNING first_name, last_name, email, image;
+        WHERE staff.image IS DISTINCT FROM EXCLUDED.image OR staff.is_deleted = true
       `;
 
-      const result = await db.query(upsertQuery, [uid, first_name, last_name, email, picture]);
+      await db.query(upsertQuery, [uid, first_name, last_name, email, picture]);
+      const userData = { first_name, last_name, email, image: picture };
       
       const response = NextResponse.json(
-        { success: true, data: result.rows[0] },
+        { success: true, data: userData },
         { status: 200 }
       );
 
       response.cookies.set("session", sessionCookie, {
         httpOnly: true,
         secure: true,
-        sameSite: "none",
+        sameSite: "none", // "None" requires Secure and can be slower in cross-site contexts
         maxAge: expiresIn / 1000,
         path: "/",
       });
@@ -74,7 +75,6 @@ export async function POST(req) {
       return withCors(response, origin);
 
     } catch (error) {
-      console.error("Auth Error:", error);
       return json({ success: false, message: "Authentication failed" }, 500, origin);
     }
   }, req, origin);
