@@ -33,49 +33,33 @@ export async function POST(req) {
       }
 
       const idToken = authHeader.split("Bearer ")[1];
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-      const { uid, email, name, picture } = decodedToken;
+      
+      const expiresIn = 60 * 60 * 24 * 5 * 1000;
+      const [decoded, sessionCookie] = await Promise.all([
+        admin.auth().verifyIdToken(idToken),
+        admin.auth().createSessionCookie(idToken, { expiresIn })
+      ]);
+
+      const { uid, email, name, picture } = decoded;
       const [first_name, ...rest] = (name || "").split(" ");
       const last_name = rest.join(" ");
 
-      const syncQuery = `
-        WITH upserted AS (
-          INSERT INTO staff (uid, first_name, last_name, email, image, is_deleted)
-          VALUES ($1, $2, $3, $4, $5, false)
-          ON CONFLICT (uid) DO UPDATE SET 
-            is_deleted = false, image = EXCLUDED.image
-          RETURNING id
-        )
-        SELECT u.id as staff_id, sr.role, sr.section_id, sr.counter_id
-        FROM upserted u
-        LEFT JOIN staff_role sr ON u.id = sr.staff_id;
+      const upsertQuery = `
+        INSERT INTO staff (uid, first_name, last_name, email, image, is_deleted)
+        VALUES ($1, $2, $3, $4, $5, false)
+        ON CONFLICT (uid) 
+        DO UPDATE SET 
+          is_deleted = false,
+          image = EXCLUDED.image,
+          first_name = EXCLUDED.first_name,
+          last_name = EXCLUDED.last_name
+        RETURNING first_name, last_name, email, image;
       `;
 
-      const dbResult = await db.query(syncQuery, [uid, first_name, last_name, email, picture]);
-      if (dbResult.rows.length === 0) throw new Error("Database sync failed");
-
-      const staff_id = dbResult.rows[0].staff_id;
-      const isSuperAdmin = dbResult.rows.some(r => r.role === 'super_admin');
-
-      const rs = {};
-      dbResult.rows.forEach(r => {
-        if (!r.role || r.role === 'super_admin') return;
-        const roleChar = r.role === 'admin' ? 'a' : 's';
-
-        rs[r.section_id] = r.counter_id ? [roleChar, r.counter_id] : roleChar;
-      });
-
-      await admin.auth().setCustomUserClaims(uid, {
-        sid: staff_id,
-        sa: isSuperAdmin ? 1 : 0,
-        rs: rs
-      });
-
-      const expiresIn = 60 * 60 * 24 * 5 * 1000;
-      const sessionCookie = await admin.auth().createSessionCookie(idToken, { expiresIn });
-
+      const result = await db.query(upsertQuery, [uid, first_name, last_name, email, picture]);
+      
       const response = NextResponse.json(
-        { success: true, data: { staff_id, first_name, last_name } },
+        { success: true, data: result.rows[0] },
         { status: 200 }
       );
 
