@@ -215,8 +215,8 @@ export async function GET(req) {
 export async function PUT(req) {
   const origin = req.headers.get("origin");
   const client = await db.connect();
-  // return withTimer(async () => {
-    // try {
+  return withTimer(async () => {
+    try {
       // 2️. Get section id
       const { searchParams } = new URL(req.url);
       const idParam = searchParams.get("id");
@@ -430,14 +430,14 @@ export async function PUT(req) {
 
       return json({ success: true }, 200, origin);
 
-    // } catch (err) {
-    //   console.error("Update section error:", err);
-    //   try { await client.query("ROLLBACK"); } catch {}
-    //   return json({ success: false, message: "Internal Server Error" }, 400, origin);
-    // } finally {
-    //   client.release();
-    // }
-  // }, req, origin);
+    } catch (err) {
+      console.error("Update section error:", err);
+      try { await client.query("ROLLBACK"); } catch {}
+      return json({ success: false, message: "Internal Server Error" }, 400, origin);
+    } finally {
+      client.release();
+    }
+  }, req, origin);
 }
 
 export async function DELETE(req) {
