@@ -336,6 +336,26 @@ export async function PUT(req) {
           );
         }
         if (next||status === "serving") {
+          if(next){
+            const servingCheck = await client.query(
+              `SELECT id FROM queue 
+              WHERE staff_id=$1 AND status = 'serving' AND deleted_at IS NULL`,
+              [staff_id]
+            );
+
+            if (servingCheck.rows.length >= 1) {
+              const detail = `update queue ${id} to ${status}`;
+
+              await client.query(
+                `INSERT INTO log (staff_id, action_type, action, target)
+                VALUES ($1, $2, $3, $4)`,
+                [staff_id, "update", detail, "queue"]
+              );
+              
+              await client.query("COMMIT");
+              return json({ success: true, role: "staff"}, 200, origin);
+            }
+          }
           // 3.3 UPDATE queue serving
           if(!staff_counter_id){
             await client.query(
