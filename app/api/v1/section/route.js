@@ -140,7 +140,8 @@ export async function GET(req) {
               OR ($2 = true AND id::text = $1)
             )
             AND is_deleted = false 
-            AND depth_int = 0`,
+            AND depth_int = 0
+            ORDER BY id ASC`,
           [searchName, isNumber]
         );
 
@@ -161,7 +162,8 @@ export async function GET(req) {
         JOIN jsonb_to_recordset($2::jsonb) AS r(section_id int, role text) 
           ON s.id = r.section_id
         WHERE s.name ILIKE '%' || $1 || '%'
-          AND s.is_deleted = false`,
+          AND s.is_deleted = false
+        ORDER BY s.id ASC`,
         [searchName, JSON.stringify(rolesArray)]
       );
 
