@@ -40,27 +40,28 @@ export async function POST(req) {
         admin.auth().createSessionCookie(idToken, { expiresIn })
       ]);
 
-      const { uid, email, name, picture } = decoded;
+      const { uid, email, name } = decoded;
       const [first_name, ...rest] = (name || "").split(" ");
       const last_name = rest.join(" ");
 
       const upsertQuery = `
-        INSERT INTO staff (uid, first_name, last_name, email, image, is_deleted)
-        VALUES ($1, $2, $3, $4, $5, false)
+        INSERT INTO staff (uid, first_name, last_name, email, is_deleted)
+        VALUES ($1, $2, $3, $4, false)
         ON CONFLICT (uid) 
         DO UPDATE SET 
           is_deleted = false,
-          image = EXCLUDED.image,
           first_name = EXCLUDED.first_name,
           last_name = EXCLUDED.last_name
-        WHERE staff.image IS DISTINCT FROM EXCLUDED.image OR staff.is_deleted = true
+        WHERE staff.is_deleted = true 
+          OR staff.first_name IS DISTINCT FROM EXCLUDED.first_name 
+          OR staff.last_name IS DISTINCT FROM EXCLUDED.last_name
       `;
 
-      await db.query(upsertQuery, [uid, first_name, last_name, email, picture]);
-      const userData = { first_name, last_name, email, image: picture };
+      await db.query(upsertQuery, [uid, first_name, last_name, email]);
+      // const userData = { first_name, last_name, email};
       
       const response = NextResponse.json(
-        { success: true, data: userData },
+        { success: true },
         { status: 200 }
       );
 
