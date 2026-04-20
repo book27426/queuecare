@@ -58,10 +58,10 @@ export async function POST(req) {
       `;
 
       await db.query(upsertQuery, [uid, first_name, last_name, email]);
-      // const userData = { first_name, last_name, email};
+      const userData = { first_name, last_name, email};
       
       const response = NextResponse.json(
-        { success: true },
+        { success: true, data: userData },
         { status: 200 }
       );
 
