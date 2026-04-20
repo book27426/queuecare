@@ -120,28 +120,22 @@ export async function GET(req) {
         const isNumber = !isNaN(searchName) && !isNaN(parseFloat(searchName));
         const { rows } = await db.query(
           `SELECT 
-              id, 
-              name,
-              (SELECT COUNT(*)::int 
-              FROM queue q 
-              WHERE q.section_id = section.id 
-              AND q.status IN ('waiting')
-              AND q.created_at >= CURRENT_DATE
-              ) as queue_count,
-              (SELECT COUNT(*) * section.predict_time 
-              FROM queue q 
-              WHERE q.section_id = section.id 
-              AND q.status IN ('waiting')
-              AND q.created_at >= CURRENT_DATE
-              ) as estimated_wait_minutes
-            FROM section
-            WHERE (
-              name ILIKE '%' || $1 || '%' 
-              OR ($2 = true AND id::text = $1)
-            )
-            AND is_deleted = false 
-            AND depth_int = 0
-            ORDER BY id ASC`,
+            s.id, 
+            s.name,
+            COUNT(q.id)::int AS queue_count,
+            COALESCE(COUNT(q.id) * s.predict_time, 0) AS estimated_wait_minutes
+          FROM section s
+          LEFT JOIN queue q ON q.section_id = s.id 
+            AND q.status = 'waiting'
+            AND q.created_at >= CURRENT_DATE
+          WHERE (
+            s.name ILIKE '%' || $1 || '%' 
+            OR ($2 = true AND s.id::text = $1)
+          )
+          AND s.is_deleted = false 
+          AND s.depth_int = 0
+          GROUP BY s.id, s.name, s.predict_time
+          ORDER BY s.id ASC`,
           [searchName, isNumber]
         );
 
