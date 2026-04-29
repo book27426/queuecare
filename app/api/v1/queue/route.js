@@ -339,7 +339,7 @@ export async function PUT(req) {
           if(next){
             const servingCheck = await client.query(
               `SELECT id FROM queue 
-              WHERE staff_id=$1 AND status = 'serving' AND deleted_at IS NULL`,
+              WHERE staff_id=$1 AND status = 'serving'`,
               [staff_id]
             );
 
